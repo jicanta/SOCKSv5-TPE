@@ -25,9 +25,8 @@ INCLUDES = -I. \
            -I$(TESTS_DIR)/include
 
 # Archivos fuente del servidor
-SERVER_SOURCES = main.c \
-                 socks5nio.c \
-                 $(SERVER_DIR)/parser/parser.c \
+# Nota: main.c y socks5nio.c están excluidos hasta que existan sus dependencias (socks5.h, hello.h, request.h)
+SERVER_SOURCES = $(SERVER_DIR)/parser/parser.c \
                  $(SERVER_DIR)/parser/parser_utils.c \
                  $(SERVER_DIR)/states/stm.c \
                  $(SERVER_DIR)/utils/buffer.c \
