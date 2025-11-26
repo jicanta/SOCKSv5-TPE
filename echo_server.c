@@ -15,12 +15,23 @@
 #define BACKLOG 10          // tamaño de cola de listen()
 #define BUF_SIZE 4096
 
+// stdio.h, stdlib.h, string.h y errno.h: lo clasico de C para imprimir, manejar strings y errores
+// unistd.h nos da close(), read(), write() y las típicas syscalls POSIX 
+// sys/socket.h, netinet/in.h, arpa/inet.h nos da todo lo vinculados a sockets como
+// el struct sockaddr_in, constantes como AF_INET, etc.
+// BACKLOG define cuantas conexiones puede tener en la cola el listen() antes de que
+// las empiece a aceptar con accept().
+// BUF_SIZE es el tamaño del buffer con el que leemos del cliente
+
 static void die(const char *msg) {
     perror(msg);
     exit(EXIT_FAILURE);
 }
 
 int main(int argc, char *argv[]) {
+  // el server espera un único argumento: el puerto donde va a escuchar
+  // server_fd y client_fd son file descriptors. el de server es el socket pasivo que escucha.
+  // el de client es el socket activo para hablar con 1 cliente
     if (argc != 2) {
         fprintf(stderr, "Uso: %s <puerto>\n", argv[0]);
         return EXIT_FAILURE;
@@ -36,6 +47,9 @@ int main(int argc, char *argv[]) {
     int client_fd = -1;
 
     // 1) socket()
+    // AF_INET son familias de direcciones IPV4.
+    // SOCK_STREAM indica que es tipo TCP.
+    // el server_fd es como un archivo especial por donde recibo conexiones de red.
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
         die("socket");
@@ -48,6 +62,9 @@ int main(int argc, char *argv[]) {
     }
 
     // 2) bind()
+    // asigna ip:puerto.
+    // el struct sockaddr_in representa una ip y un puerto.
+    // bind() le dice al SO que este socket va a escuchar en esta ip y este puerto
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family      = AF_INET;
@@ -59,6 +76,8 @@ int main(int argc, char *argv[]) {
     }
 
     // 3) listen()
+    // el listen le dice al SO que arranque a escuchar conexiones entrantes en el socket.
+    // despues del listen(), el socket es un socket pasivo.
     if (listen(server_fd, BACKLOG) < 0) {
         die("listen");
     }
@@ -66,6 +85,10 @@ int main(int argc, char *argv[]) {
     printf("Echo server escuchando en puerto %d...\n", port);
 
     // Bucle principal: aceptar clientes de a uno
+    // bucle infinito: el server vive para siempre aceptando clientes
+    // client_addr va a contener la IP:Puerto del cliente que se conecta.
+    // accept() bloquea hasta que llega una nueva conexión.
+    // devuelve un fd client_fd que es el canal para hablar con ese cliente.
     for (;;) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
@@ -83,6 +106,9 @@ int main(int argc, char *argv[]) {
                ntohs(client_addr.sin_port));
 
         // 5) Bucle de echo por cada cliente
+        // mientras el cliente siga conectado, seguimos leyendo datos
+        // el read bloquea.
+      
         for (;;) {
             char buf[BUF_SIZE];
 
@@ -118,3 +144,8 @@ close_client:
     close(server_fd);
     return EXIT_SUCCESS;
 }
+// este server usa I/O bloqueante.
+// read() y accept() detienen todo hasta que pase algo.
+// esto hace tmb que no pueda aceptar varios clientes (mientras leo de uno, no puedo aceptar a otros).
+// para el TP vamos a tener que usar IO no bloqueante y un selector (como select o poll)
+// vamos a poner todos los sockets en O_NONBLOCK
