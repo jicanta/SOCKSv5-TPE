@@ -34,11 +34,15 @@ SERVER_SOURCES = $(SERVER_DIR)/parser/parser.c \
                  $(SERVER_DIR)/utils/selector.c \
                  $(SHARED_DIR)/args.c
 
+# Archivo fuente del echo_server
+ECHO_SERVER_SOURCE = echo_server.c
+
 # Archivos objeto
 SERVER_OBJECTS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(notdir $(SERVER_SOURCES)))
+ECHO_SERVER_OBJECT = $(OBJ_DIR)/echo_server.o
 
-# Ejecutable principal
-TARGET = $(BIN_DIR)/socks5d
+# Ejecutable principal (echo_server)
+TARGET = $(BIN_DIR)/echo_server
 
 # Tests
 TEST_SOURCES = $(wildcard $(TESTS_DIR)/*_test.c)
@@ -68,8 +72,8 @@ dirs:
 	@mkdir -p $(OBJ_DIR)
 	@mkdir -p $(BIN_DIR)
 
-# Compilar el ejecutable principal
-$(TARGET): $(SERVER_OBJECTS)
+# Compilar el ejecutable principal (echo_server)
+$(TARGET): $(ECHO_SERVER_OBJECT) $(SERVER_OBJECTS)
 	@echo "$(YELLOW)Linking $(TARGET)...$(NC)"
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
@@ -113,12 +117,12 @@ $(BIN_DIR)/stm_test: $(TESTS_DIR)/stm_test.c $(SERVER_DIR)/states/stm.c
 
 # Ejecutar el servidor
 run: all
-	@echo "$(GREEN)Iniciando servidor SOCKSv5 en puerto 1080...$(NC)"
+	@echo "$(GREEN)Iniciando echo_server...$(NC)"
 	$(TARGET)
 
 # Ejecutar con puerto específico
 run-port: all
-	@echo "$(GREEN)Iniciando servidor SOCKSv5 en puerto $(PORT)...$(NC)"
+	@echo "$(GREEN)Iniciando echo_server en puerto $(PORT)...$(NC)"
 	$(TARGET) $(PORT)
 
 # Limpiar archivos generados
