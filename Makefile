@@ -18,6 +18,7 @@ BIN_DIR = $(BUILD_DIR)/bin
 # Includes
 INCLUDES = -I. \
            -Iinclude \
+           -I$(SRC_DIR)/include \
            -I$(SERVER_DIR)/parser/include \
            -I$(SERVER_DIR)/states/include \
            -I$(SERVER_DIR)/utils/include \
@@ -25,8 +26,9 @@ INCLUDES = -I. \
            -I$(TESTS_DIR)/include
 
 # Archivos fuente del servidor
-# Nota: main.c y socks5nio.c están excluidos hasta que existan sus dependencias (socks5.h, hello.h, request.h)
-SERVER_SOURCES = $(SERVER_DIR)/parser/parser.c \
+SERVER_SOURCES = $(SRC_DIR)/main.c \
+                 $(SRC_DIR)/socks5nio.c \
+                 $(SERVER_DIR)/parser/parser.c \
                  $(SERVER_DIR)/parser/parser_utils.c \
                  $(SERVER_DIR)/states/stm.c \
                  $(SERVER_DIR)/utils/buffer.c \
@@ -34,15 +36,11 @@ SERVER_SOURCES = $(SERVER_DIR)/parser/parser.c \
                  $(SERVER_DIR)/utils/selector.c \
                  $(SHARED_DIR)/args.c
 
-# Archivo fuente del echo_server
-ECHO_SERVER_SOURCE = echo_server.c
-
 # Archivos objeto
 SERVER_OBJECTS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(notdir $(SERVER_SOURCES)))
-ECHO_SERVER_OBJECT = $(OBJ_DIR)/echo_server.o
 
-# Ejecutable principal (echo_server)
-TARGET = $(BIN_DIR)/echo_server
+# Ejecutable principal
+TARGET = $(BIN_DIR)/socks5d
 
 # Tests
 TEST_SOURCES = $(wildcard $(TESTS_DIR)/*_test.c)
@@ -50,7 +48,7 @@ TEST_TARGETS = $(patsubst $(TESTS_DIR)/%_test.c,$(BIN_DIR)/%_test,$(TEST_SOURCES
 TEST_LDFLAGS = $(LDFLAGS) -lcheck -lm -lsubunit
 
 # VPATH para encontrar los archivos fuente
-VPATH = .:$(SERVER_DIR)/parser:$(SERVER_DIR)/states:$(SERVER_DIR)/utils:$(SHARED_DIR)
+VPATH = .:$(SRC_DIR):$(SERVER_DIR)/parser:$(SERVER_DIR)/states:$(SERVER_DIR)/utils:$(SHARED_DIR)
 
 # Colores para output
 RED = \033[0;31m
@@ -72,8 +70,8 @@ dirs:
 	@mkdir -p $(OBJ_DIR)
 	@mkdir -p $(BIN_DIR)
 
-# Compilar el ejecutable principal (echo_server)
-$(TARGET): $(ECHO_SERVER_OBJECT) $(SERVER_OBJECTS)
+# Compilar el ejecutable principal
+$(TARGET): $(SERVER_OBJECTS)
 	@echo "$(YELLOW)Linking $(TARGET)...$(NC)"
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
