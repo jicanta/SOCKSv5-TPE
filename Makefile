@@ -28,7 +28,10 @@ INCLUDES = -I. \
 # Archivos fuente del servidor
 SERVER_SOURCES = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/socks5nio.c \
-                 $(SRC_DIR)/socks5_states.c \
+                 $(SRC_DIR)/socks5_hello.c \
+                 $(SRC_DIR)/socks5_auth.c \
+                 $(SRC_DIR)/socks5_request.c \
+                 $(SRC_DIR)/socks5_copy.c \
                  $(SERVER_DIR)/parser/parser.c \
                  $(SERVER_DIR)/parser/parser_utils.c \
                  $(SERVER_DIR)/states/stm.c \
@@ -109,6 +112,18 @@ $(BIN_DIR)/parser_utils_test: $(TESTS_DIR)/parser_utils_test.c $(SERVER_DIR)/par
 
 $(BIN_DIR)/stm_test: $(TESTS_DIR)/stm_test.c $(SERVER_DIR)/states/stm.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(TEST_LDFLAGS)
+
+# Compile the test unit object
+build/obj/test_sock5_unit.o: src/tests/test_sock5_unit.c
+	@mkdir -p build/obj
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# Link and Run the Unit Tests
+test_unit: $(SERVER_OBJECTS) build/obj/test_sock5_unit.o
+	$(CC) $(CFLAGS) $(filter-out build/obj/main.o build/obj/socks5nio.o build/obj/selector.o, $(SERVER_OBJECTS)) build/obj/test_sock5_unit.o -o test_runner
+	./test_runner
+
+.PHONY: test_unit
 
 # =====================================
 # Utilidades
