@@ -28,6 +28,7 @@ INCLUDES = -I. \
 # Archivos fuente del servidor
 SERVER_SOURCES = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/socks5nio.c \
+                 $(SRC_DIR)/socks5_states.c \
                  $(SERVER_DIR)/parser/parser.c \
                  $(SERVER_DIR)/parser/parser_utils.c \
                  $(SERVER_DIR)/states/stm.c \
