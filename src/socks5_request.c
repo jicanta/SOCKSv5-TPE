@@ -42,6 +42,7 @@ unsigned request_read(struct selector_key *key) {
     return ERROR;
   buffer_write_adv(r->rb, n);
 
+  // TODO: emprolijar
   while (buffer_can_read(r->rb) && r->state != REQUEST_DONE &&
          r->state != REQUEST_ERROR) {
     uint8_t byte = buffer_read(r->rb);

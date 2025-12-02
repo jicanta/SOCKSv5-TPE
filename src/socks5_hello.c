@@ -37,9 +37,10 @@ unsigned hello_read(struct selector_key *key) {
     return ERROR;
   buffer_write_adv(h->rb, n);
 
+  // TODO: emprolijar lola
   while (buffer_can_read(h->rb) && h->state != HELLO_DONE &&
          h->state != HELLO_ERROR) {
-    uint8_t byte = buffer_read(h->rb);
+    const uint8_t byte = buffer_read(h->rb);
     switch (h->state) {
     case HELLO_VERSION:
       h->state = (byte == SOCKS_VERSION) ? HELLO_NMETHODS : HELLO_ERROR;

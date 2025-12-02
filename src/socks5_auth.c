@@ -47,6 +47,7 @@ unsigned auth_read(struct selector_key *key) {
     return ERROR;
   buffer_write_adv(a->rb, n);
 
+  // TODO: emprolijar
   static uint8_t idx = 0;
   while (buffer_can_read(a->rb) && a->state != AUTH_DONE &&
          a->state != AUTH_ERROR) {
