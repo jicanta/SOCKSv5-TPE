@@ -19,6 +19,24 @@ extern struct socks5args socks5args;
 static unsigned request_start_resolve(struct selector_key *key);
 static unsigned request_start_connect(struct selector_key *key);
 
+static unsigned request_marshall_reply(struct selector_key *key,
+                                       uint8_t reply_code) {
+  struct socks5 *s = ATTACHMENT(key);
+  struct request_st *r = &s->client.request;
+
+  r->reply = reply_code;
+  buffer_reset(r->wb);
+  buffer_write(r->wb, SOCKS_VERSION);
+  buffer_write(r->wb, reply_code);
+  buffer_write(r->wb, SOCKS_RSV);
+  buffer_write(r->wb, SOCKS_ATYP_IPV4);
+  for (int i = 0; i < SOCKS_IPV4_ADDR_SIZE + SOCKS_PORT_SIZE; i++)
+    buffer_write(r->wb, 0x00);
+
+  selector_set_interest(key->s, s->client_fd, OP_WRITE);
+  return REQUEST_WRITE;
+}
+
 void request_read_init(const unsigned state, struct selector_key *key) {
   (void)state;
   struct socks5 *s = ATTACHMENT(key);
@@ -31,6 +49,82 @@ void request_read_init(const unsigned state, struct selector_key *key) {
   buffer_reset(r->wb);
 }
 
+static void request_process_version(struct request_st *r, uint8_t byte) {
+  r->state = (byte == SOCKS_VERSION) ? REQUEST_CMD : REQUEST_ERROR;
+}
+
+static void request_process_cmd(struct request_st *r, uint8_t byte) {
+  r->cmd = byte;
+  if (byte != SOCKS_CMD_CONNECT) {
+    r->reply = SOCKS_REPLY_CMD_NOT_SUPPORTED;
+    r->state = REQUEST_ERROR;
+  } else {
+    r->state = REQUEST_RSV;
+  }
+}
+
+static void request_process_rsv(struct request_st *r, uint8_t byte) {
+  (void)byte;
+  r->state = REQUEST_ATYP;
+}
+
+static void request_process_atyp(struct request_st *r, uint8_t byte) {
+  r->atyp = byte;
+  r->addr_index = 0;
+  if (byte == SOCKS_ATYP_IPV4 || byte == SOCKS_ATYP_IPV6 ||
+      byte == SOCKS_ATYP_DOMAIN) {
+    r->state = REQUEST_DSTADDR;
+  } else {
+    r->reply = SOCKS_REPLY_ATYP_NOT_SUPPORTED;
+    r->state = REQUEST_ERROR;
+  }
+}
+
+static void request_process_dstaddr(struct request_st *r, uint8_t byte) {
+  if (r->atyp == SOCKS_ATYP_IPV4) {
+    ((uint8_t *)&r->dest_addr.ipv4)[r->addr_index++] = byte;
+    if (r->addr_index >= SOCKS_IPV4_ADDR_SIZE) {
+      r->state = REQUEST_DSTPORT;
+      r->addr_index = 0;
+    }
+  } else if (r->atyp == SOCKS_ATYP_IPV6) {
+    r->dest_addr.ipv6.s6_addr[r->addr_index++] = byte;
+    if (r->addr_index >= SOCKS_IPV6_ADDR_SIZE) {
+      r->state = REQUEST_DSTPORT;
+      r->addr_index = 0;
+    }
+  } else if (r->atyp == SOCKS_ATYP_DOMAIN) {
+    if (r->addr_index == 0) {
+      r->fqdn_len = byte;
+      r->addr_index = 1;
+    } else {
+      r->dest_addr.fqdn[r->addr_index - 1] = byte;
+      if (++r->addr_index > r->fqdn_len) {
+        r->dest_addr.fqdn[r->fqdn_len] = 0;
+        r->state = REQUEST_DSTPORT;
+        r->addr_index = 0;
+      }
+    }
+  }
+}
+
+static void request_process_dstport(struct request_st *r, uint8_t byte) {
+  if (r->addr_index == 0) {
+    r->dest_port = byte << 8;
+    r->addr_index = 1;
+  } else {
+    r->dest_port |= byte;
+    r->state = REQUEST_DONE;
+  }
+}
+
+// EXAMPLE REQUEST PACKET
+//+----+-----+-------+------+----------+----------+
+//|VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
+//+----+-----+-------+------+----------+----------+
+//| 1  |  1  | X'00' |  1   | Variable |    2     |
+//+----+-----+-------+------+----------+----------+
+
 unsigned request_read(struct selector_key *key) {
   struct socks5 *s = ATTACHMENT(key);
   struct request_st *r = &s->client.request;
@@ -42,92 +136,39 @@ unsigned request_read(struct selector_key *key) {
     return ERROR;
   buffer_write_adv(r->rb, n);
 
-  // TODO: emprolijar
   while (buffer_can_read(r->rb) && r->state != REQUEST_DONE &&
          r->state != REQUEST_ERROR) {
     uint8_t byte = buffer_read(r->rb);
     switch (r->state) {
     case REQUEST_VERSION:
-      r->state = (byte == SOCKS_VERSION) ? REQUEST_CMD : REQUEST_ERROR;
+      request_process_version(r, byte);
       break;
     case REQUEST_CMD:
-      r->cmd = byte;
-      if (byte != SOCKS_CMD_CONNECT) {
-        r->reply = SOCKS_REPLY_CMD_NOT_SUPPORTED;
-        r->state = REQUEST_ERROR;
-      } else
-        r->state = REQUEST_RSV;
+      request_process_cmd(r, byte);
       break;
     case REQUEST_RSV:
-      r->state = REQUEST_ATYP;
+      request_process_rsv(r, byte);
       break;
     case REQUEST_ATYP:
-      r->atyp = byte;
-      r->addr_index = 0;
-      if (byte == SOCKS_ATYP_IPV4 || byte == SOCKS_ATYP_IPV6 ||
-          byte == SOCKS_ATYP_DOMAIN)
-        r->state = REQUEST_DSTADDR;
-      else {
-        r->reply = SOCKS_REPLY_ATYP_NOT_SUPPORTED;
-        r->state = REQUEST_ERROR;
-      }
+      request_process_atyp(r, byte);
       break;
     case REQUEST_DSTADDR:
-      if (r->atyp == SOCKS_ATYP_IPV4) {
-        ((uint8_t *)&r->dest_addr.ipv4)[r->addr_index++] = byte;
-        if (r->addr_index >= 4) {
-          r->state = REQUEST_DSTPORT;
-          r->addr_index = 0;
-        }
-      } else if (r->atyp == SOCKS_ATYP_IPV6) {
-        r->dest_addr.ipv6.s6_addr[r->addr_index++] = byte;
-        if (r->addr_index >= 16) {
-          r->state = REQUEST_DSTPORT;
-          r->addr_index = 0;
-        }
-      } else if (r->atyp == SOCKS_ATYP_DOMAIN) {
-        if (r->addr_index == 0) {
-          r->fqdn_len = byte;
-          r->addr_index = 1;
-        } else {
-          r->dest_addr.fqdn[r->addr_index - 1] = byte;
-          if (++r->addr_index > r->fqdn_len) {
-            r->dest_addr.fqdn[r->fqdn_len] = 0;
-            r->state = REQUEST_DSTPORT;
-            r->addr_index = 0;
-          }
-        }
-      }
+      request_process_dstaddr(r, byte);
       break;
     case REQUEST_DSTPORT:
-      if (r->addr_index == 0) {
-        r->dest_port = byte << 8;
-        r->addr_index = 1;
-      } else {
-        r->dest_port |= byte;
-        r->state = REQUEST_DONE;
-      }
+      request_process_dstport(r, byte);
+      break;
+    default:
       break;
     }
   }
 
   if (r->state == REQUEST_ERROR)
-    goto send_reply;
+    return request_marshall_reply(key, r->reply);
   if (r->state == REQUEST_DONE)
     return (r->atyp == SOCKS_ATYP_DOMAIN) ? request_start_resolve(key)
                                           : request_start_connect(key);
   return REQUEST_READ;
-
-send_reply:
-  buffer_reset(r->wb);
-  buffer_write(r->wb, SOCKS_VERSION);
-  buffer_write(r->wb, r->reply);
-  buffer_write(r->wb, 0x00);
-  buffer_write(r->wb, SOCKS_ATYP_IPV4);
-  for (int i = 0; i < 6; i++)
-    buffer_write(r->wb, 0x00);
-  selector_set_interest_key(key, OP_WRITE);
-  return REQUEST_WRITE;
 }
 
 static unsigned request_start_resolve(struct selector_key *key) {
@@ -136,62 +177,70 @@ static unsigned request_start_resolve(struct selector_key *key) {
   struct addrinfo hints = {.ai_family = AF_UNSPEC,
                            .ai_socktype = SOCK_STREAM,
                            .ai_protocol = IPPROTO_TCP};
-  char port_str[6];
+  char port_str[SOCKS_PORT_STR_LEN];
   snprintf(port_str, sizeof(port_str), "%u", r->dest_port);
 
   int err =
       getaddrinfo(r->dest_addr.fqdn, port_str, &hints, &s->origin_resolution);
   if (err != 0 || s->origin_resolution == NULL) {
-    r->reply = SOCKS_REPLY_HOST_UNREACHABLE;
-    buffer_reset(r->wb);
-    buffer_write(r->wb, SOCKS_VERSION);
-    buffer_write(r->wb, r->reply);
-    buffer_write(r->wb, 0x00);
-    buffer_write(r->wb, SOCKS_ATYP_IPV4);
-    for (int i = 0; i < 6; i++)
-      buffer_write(r->wb, 0x00);
-    selector_set_interest_key(key, OP_WRITE);
-    return REQUEST_WRITE;
+    return request_marshall_reply(key, SOCKS_REPLY_HOST_UNREACHABLE);
   }
   s->current_origin_addr = s->origin_resolution;
   return request_start_connect(key);
+}
+
+static int setup_address(struct socks5 *s, struct request_st *r,
+                         struct sockaddr_storage *addr, socklen_t *addr_len) {
+  memset(addr, 0, sizeof(*addr));
+  *addr_len = 0;
+
+  if (s->origin_resolution) {
+    if (!s->current_origin_addr) {
+      return -1;
+    }
+    memcpy(addr, s->current_origin_addr->ai_addr,
+           s->current_origin_addr->ai_addrlen);
+    *addr_len = s->current_origin_addr->ai_addrlen;
+  } else if (r->atyp == SOCKS_ATYP_IPV4) {
+    struct sockaddr_in *sin = (struct sockaddr_in *)addr;
+    sin->sin_family = AF_INET;
+    sin->sin_addr = r->dest_addr.ipv4;
+    sin->sin_port = htons(r->dest_port);
+    *addr_len = sizeof(*sin);
+  } else if (r->atyp == SOCKS_ATYP_IPV6) {
+    struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)addr;
+    sin6->sin6_family = AF_INET6;
+    sin6->sin6_addr = r->dest_addr.ipv6;
+    sin6->sin6_port = htons(r->dest_port);
+    *addr_len = sizeof(*sin6);
+  }
+  return 0;
+}
+
+static int create_socket(int family) {
+  int fd = socket(family, SOCK_STREAM, IPPROTO_TCP);
+  if (fd < 0)
+    return -1;
+  if (selector_fd_set_nio(fd) < 0) {
+    close(fd);
+    return -1;
+  }
+  return fd;
 }
 
 static unsigned request_start_connect(struct selector_key *key) {
   struct socks5 *s = ATTACHMENT(key);
   struct request_st *r = &s->client.request;
   struct sockaddr_storage addr;
-  memset(&addr, 0, sizeof(addr));
   socklen_t addr_len = 0;
 
-  if (s->origin_resolution) {
-    if (!s->current_origin_addr) {
-      r->reply = SOCKS_REPLY_HOST_UNREACHABLE;
-      goto error;
-    }
-    memcpy(&addr, s->current_origin_addr->ai_addr,
-           s->current_origin_addr->ai_addrlen);
-    addr_len = s->current_origin_addr->ai_addrlen;
-  } else if (r->atyp == SOCKS_ATYP_IPV4) {
-    struct sockaddr_in *sin = (struct sockaddr_in *)&addr;
-    sin->sin_family = AF_INET;
-    sin->sin_addr = r->dest_addr.ipv4;
-    sin->sin_port = htons(r->dest_port);
-    addr_len = sizeof(*sin);
-  } else if (r->atyp == SOCKS_ATYP_IPV6) {
-    struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&addr;
-    sin6->sin6_family = AF_INET6;
-    sin6->sin6_addr = r->dest_addr.ipv6;
-    sin6->sin6_port = htons(r->dest_port);
-    addr_len = sizeof(*sin6);
+  if (setup_address(s, r, &addr, &addr_len) < 0) {
+    return request_marshall_reply(key, SOCKS_REPLY_HOST_UNREACHABLE);
   }
 
-  int origin_fd = socket(addr.ss_family, SOCK_STREAM, IPPROTO_TCP);
-  if (origin_fd < 0 || selector_fd_set_nio(origin_fd) < 0) {
-    if (origin_fd >= 0)
-      close(origin_fd);
-    r->reply = SOCKS_REPLY_GENERAL_FAILURE;
-    goto error;
+  int origin_fd = create_socket(addr.ss_family);
+  if (origin_fd < 0) {
+    return request_marshall_reply(key, SOCKS_REPLY_GENERAL_FAILURE);
   }
 
   if (connect(origin_fd, (struct sockaddr *)&addr, addr_len) < 0 &&
@@ -200,8 +249,7 @@ static unsigned request_start_connect(struct selector_key *key) {
     if (s->origin_resolution &&
         (s->current_origin_addr = s->current_origin_addr->ai_next))
       return request_start_connect(key);
-    r->reply = SOCKS_REPLY_CONNECTION_REFUSED;
-    goto error;
+    return request_marshall_reply(key, SOCKS_REPLY_CONNECTION_REFUSED);
   }
 
   s->origin_fd = origin_fd;
@@ -211,22 +259,10 @@ static unsigned request_start_connect(struct selector_key *key) {
     s->references--;
     close(origin_fd);
     s->origin_fd = -1;
-    r->reply = SOCKS_REPLY_GENERAL_FAILURE;
-    goto error;
+    return request_marshall_reply(key, SOCKS_REPLY_GENERAL_FAILURE);
   }
   selector_set_interest_key(key, OP_NOOP);
   return REQUEST_CONNECTING;
-
-error:
-  buffer_reset(r->wb);
-  buffer_write(r->wb, SOCKS_VERSION);
-  buffer_write(r->wb, r->reply);
-  buffer_write(r->wb, 0x00);
-  buffer_write(r->wb, SOCKS_ATYP_IPV4);
-  for (int i = 0; i < 6; i++)
-    buffer_write(r->wb, 0x00);
-  selector_set_interest_key(key, OP_WRITE);
-  return REQUEST_WRITE;
 }
 
 unsigned request_resolving(struct selector_key *key) {
@@ -258,28 +294,13 @@ unsigned request_connecting(struct selector_key *key) {
       selector_set_interest(key->s, s->client_fd, OP_READ);
       return request_start_connect(key);
     }
-    r->reply = SOCKS_REPLY_CONNECTION_REFUSED;
-    buffer_reset(r->wb);
-    buffer_write(r->wb, SOCKS_VERSION);
-    buffer_write(r->wb, r->reply);
-    buffer_write(r->wb, 0x00);
-    buffer_write(r->wb, SOCKS_ATYP_IPV4);
-    for (int i = 0; i < 6; i++)
-      buffer_write(r->wb, 0x00);
-    selector_set_interest(key->s, s->client_fd, OP_WRITE);
-    return REQUEST_WRITE;
+    return request_marshall_reply(key, SOCKS_REPLY_CONNECTION_REFUSED);
   }
 
-  r->reply = SOCKS_REPLY_SUCCEEDED;
-  buffer_reset(r->wb);
-  buffer_write(r->wb, SOCKS_VERSION);
-  buffer_write(r->wb, SOCKS_REPLY_SUCCEEDED);
-  buffer_write(r->wb, 0x00);
-  buffer_write(r->wb, SOCKS_ATYP_IPV4);
-  for (int i = 0; i < 6; i++)
-    buffer_write(r->wb, 0x00); // Simplified bind addr
+  for (int i = 0; i < SOCKS_IPV4_ADDR_SIZE + SOCKS_PORT_SIZE; i++)
+    buffer_write(r->wb, 0x00);
 
-  char dest_str[256] = "unknown";
+  char dest_str[SOCKS_DOMAIN_MAX_LEN] = "unknown";
   if (r->atyp == SOCKS_ATYP_DOMAIN)
     snprintf(dest_str, sizeof(dest_str), "%s", r->dest_addr.fqdn);
   else if (r->atyp == SOCKS_ATYP_IPV4)
@@ -289,7 +310,7 @@ unsigned request_connecting(struct selector_key *key) {
           dest_str, r->dest_port);
   selector_set_interest(key->s, s->client_fd, OP_WRITE);
   selector_set_interest(key->s, s->origin_fd, OP_NOOP);
-  return REQUEST_WRITE;
+  return request_marshall_reply(key, SOCKS_REPLY_SUCCEEDED);
 }
 
 unsigned request_write(struct selector_key *key) {

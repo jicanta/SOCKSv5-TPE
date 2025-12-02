@@ -117,7 +117,7 @@ def test_google_connect():
         s.close()
 
 def test_concurrency():
-    print("[TEST] Concurrency (50 connections)...", end=" ")
+    print("[TEST] Concurrency (500 connections)...", end=" ")
     threads = []
     errors = []
 
@@ -132,7 +132,7 @@ def test_concurrency():
         except:
             errors.append("Connect fail")
 
-    for _ in range(50):
+    for _ in range(500):
         t = threading.Thread(target=worker)
         threads.append(t)
         t.start()

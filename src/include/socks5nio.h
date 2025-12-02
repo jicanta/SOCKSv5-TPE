@@ -55,6 +55,17 @@
 #define SOCKS_REPLY_CMD_NOT_SUPPORTED 0x07
 #define SOCKS_REPLY_ATYP_NOT_SUPPORTED 0x08
 
+// Reserved field
+#define SOCKS_RSV 0x00
+
+// Address sizes
+#define SOCKS_IPV4_ADDR_SIZE 4
+#define SOCKS_IPV6_ADDR_SIZE 16
+#define SOCKS_PORT_SIZE 2
+#define SOCKS_PORT_STR_LEN 6
+#define SOCKS_DOMAIN_MAX_LEN 256
+#define SOCKS_AUTH_MAX_LEN 256
+
 // =============================================================================
 // State Machine States
 // =============================================================================

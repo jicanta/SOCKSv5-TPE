@@ -45,9 +45,9 @@ struct auth_st {
   uint8_t state; // enum auth_state
   uint8_t version;
   uint8_t ulen;
-  char username[256];
+  char username[SOCKS_AUTH_MAX_LEN];
   uint8_t plen;
-  char password[256];
+  char password[SOCKS_AUTH_MAX_LEN];
   uint8_t status;
 };
 
@@ -73,7 +73,7 @@ struct request_st {
   union {
     struct in_addr ipv4;
     struct in6_addr ipv6;
-    char fqdn[256];
+    char fqdn[SOCKS_DOMAIN_MAX_LEN];
   } dest_addr;
   uint8_t fqdn_len;
   uint16_t dest_port;
