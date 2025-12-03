@@ -124,8 +124,8 @@ struct socks5 {
 
 // State Handlers
 void hello_read_init(const unsigned state, struct selector_key *key);
-unsigned hello_read(struct selector_key *key);
-unsigned hello_write(struct selector_key *key);
+unsigned hello_read(struct selector_key *key); //lee datos del cliente en la fase de saludo (hello), parsea el mensaje entrante y transita al estado de escritura o de falla. Handler del estado HELLO_READ
+unsigned hello_write(struct selector_key *key); 
 
 void auth_read_init(const unsigned state, struct selector_key *key);
 unsigned auth_read(struct selector_key *key);
