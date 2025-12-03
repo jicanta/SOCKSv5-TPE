@@ -9,6 +9,7 @@
 #include "args.h"
 #include "selector.h"
 #include "socks5_internal.h"
+#include "hello_parser.h"
 
 extern struct socks5args socks5args;
 
@@ -17,85 +18,56 @@ extern struct socks5args socks5args;
 //implementa la negociación inicial de métodos de autenticación y realiza la transición hacia las siguientes etapas del flujo SOCKSv5.
 // =============================================================================
 
+
+static void on_hello_method(struct hello_parser *p, const uint8_t method) {
+    bool auth_required = (socks5args.users[0].name != NULL);
+    uint8_t *selected = (uint8_t *)p->data;
+    if (method == SOCKS_AUTH_NONE && !auth_required) {
+        *selected = SOCKS_AUTH_NONE;
+    } else if (method == SOCKS_AUTH_USERPASS) {
+        *selected = SOCKS_AUTH_USERPASS;
+    }
+}
+
 void hello_read_init(const unsigned state, struct selector_key *key) {
-  (void)state;
-  struct socks5 *s = ATTACHMENT(key);
-  struct hello_st *h = &s->client.hello;
-  h->rb = &s->read_buffer;
-  h->wb = &s->write_buffer;
-  h->state = HELLO_VERSION;
-  h->method = SOCKS_AUTH_NO_ACCEPTABLE;
+    (void)state;
+    struct socks5 *s = ATTACHMENT(key);
+    struct hello_st *h = &s->client.hello;
+    h->rb = &s->read_buffer;
+    h->wb = &s->write_buffer;
+    h->method = SOCKS_AUTH_NO_ACCEPTABLE;  
+    hello_parser_init(&h->parser);  
+    h->parser.data = &h->method;  
+    h->parser.on_authentication_method = on_hello_method;  
 }
-
-
-// Función auxiliar para parsear un byte según el estado actual 
-static void parse_hello_byte(struct hello_st *h, const uint8_t byte) {
-  bool auth_required = (socks5args.users[0].name != NULL);  
-
-  switch (h->state) {
-    case HELLO_VERSION:
-      h->version = byte;
-      h->state = (byte == SOCKS_VERSION) ? HELLO_NMETHODS : HELLO_ERROR;
-      break;
-    case HELLO_NMETHODS:
-      h->nmethods = byte;
-      h->methods_remaining = byte;
-      if (byte == 0) {
-        h->state = HELLO_DONE;
-      } else if (byte > 0) { 
-        h->state = HELLO_METHODS;
-      } else {
-        h->state = HELLO_ERROR; 
-      }
-      break;
-
-    case HELLO_METHODS:
-      // Seleccionar método si coincide con opciones disponibles
-      if (byte == SOCKS_AUTH_NONE && !auth_required) {
-        h->method = SOCKS_AUTH_NONE;
-      } else if (byte == SOCKS_AUTH_USERPASS) {
-        h->method = SOCKS_AUTH_USERPASS;
-      }
-      
-
-      if (--h->methods_remaining == 0) {
-        h->state = HELLO_DONE;
-      }
-      break;
-  }
-}
-
-
 
 unsigned hello_read(struct selector_key *key) {
-  struct socks5 *s = ATTACHMENT(key);
-  struct hello_st *h = &s->client.hello;
-  size_t nbytes; //espacio disponible en el buffer de lectura.
-  uint8_t *ptr = buffer_write_ptr(h->rb, &nbytes); //puntero al espacio escribible en el buffer de lectura
-  ssize_t n = recv(key->fd, ptr, nbytes, 0); 
+    struct socks5 *s = ATTACHMENT(key);
+    struct hello_st *h = &s->client.hello;
+    size_t nbytes;
+    uint8_t *ptr = buffer_write_ptr(h->rb, &nbytes);
+    ssize_t n = recv(key->fd, ptr, nbytes, 0);
 
-  if (n <= 0)
-    return ERROR;
-  buffer_write_adv(h->rb, n);
+    if (n <= 0)
+        return ERROR;
+    buffer_write_adv(h->rb, n);
 
-  // Procesar todos los bytes disponibles en el buffer (o error)
-  while (buffer_can_read(h->rb) && h->state != HELLO_DONE && h->state != HELLO_ERROR) {
-    const uint8_t byte = buffer_read(h->rb);
-    parse_hello_byte(h, byte);  
-  }
+    bool error = false;
+    enum hello_state st = hello_consume(h->rb, &h->parser, &error);  
 
-  if (h->state == HELLO_ERROR)
-    return ERROR;
+    if (error || st == HELLO_ERROR)
+        return ERROR;
 
-  if (h->state == HELLO_DONE) {
-    // Preparar respuesta: versión y método seleccionado
-    buffer_write(h->wb, SOCKS_VERSION);
-    buffer_write(h->wb, h->method);
-    selector_set_interest_key(key, OP_WRITE);
-    return HELLO_WRITE;
-  }
+    if (hello_is_done(st, NULL)) {
+        uint8_t reply_method = (h->method == SOCKS_AUTH_NO_ACCEPTABLE) ? SOCKS_AUTH_NO_ACCEPTABLE : h->method;
+        if (hello__build_reply(h->wb, reply_method) == -1) {
+            return ERROR;  
+        }
+        selector_set_interest_key(key, OP_WRITE);
+        return HELLO_WRITE;
+    }
 
-  return HELLO_READ;
+    return HELLO_READ; 
 }
 
 

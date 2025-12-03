@@ -5,29 +5,19 @@
 #include "socks5nio.h"
 #include "stm.h"
 #include <netdb.h>
+#include "hello_parser.h"
 
 #define ATTACHMENT(key) ((struct socks5 *)(key)->data)
 
 // Shared handler for selector registration
 extern const struct fd_handler socks5_handler;
 
-// Internal States for HELLO
-enum hello_state {
-  HELLO_VERSION,
-  HELLO_NMETHODS,
-  HELLO_METHODS,
-  HELLO_DONE,
-  HELLO_ERROR,
+struct hello_st {
+    buffer *rb, *wb;
+    uint8_t method;  
+    struct hello_parser parser;  
 };
 
-struct hello_st {
-  buffer *rb, *wb;
-  uint8_t state; // enum hello_state
-  uint8_t version;
-  uint8_t nmethods;
-  uint8_t methods_remaining;
-  uint8_t method;
-};
 
 // Internal States for AUTH
 enum auth_state {
