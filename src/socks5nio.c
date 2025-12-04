@@ -8,7 +8,7 @@
 #include "selector.h"
 #include "socks5_internal.h"
 #include "socks5nio.h"
-#include "stm.h"
+#include "metrics.h"
 
 // =============================================================================
 // Connection Pool
@@ -17,7 +17,6 @@
 static const unsigned max_pool = 50;
 static unsigned pool_size = 0;
 static struct socks5 *pool = NULL;
-static unsigned active_connections = 0;
 
 static struct socks5 *socks5_new(int client_fd) {
   struct socks5 *s = pool;
@@ -153,7 +152,7 @@ static void socksv5_done(struct selector_key *key) {
     close(s->origin_fd);
     s->origin_fd = -1;
   }
-  active_connections--;
+  metrics_close_connection();
 }
 
 static void socksv5_read(struct selector_key *key) {
@@ -190,7 +189,8 @@ void socksv5_passive_accept(struct selector_key *key) {
   if (client_fd < 0)
     return;
 
-  if (active_connections >= 500 || selector_fd_set_nio(client_fd) < 0) {
+  struct metrics *m = metrics_get();
+  if (m->current_connections >= 500 || selector_fd_set_nio(client_fd) < 0) {
     close(client_fd);
     return;
   }
@@ -214,6 +214,6 @@ void socksv5_passive_accept(struct selector_key *key) {
     close(client_fd);
     return;
   }
-  active_connections++;
+  metrics_new_connection();
   fprintf(stdout, "New client connection accepted (fd=%d)\n", client_fd);
 }

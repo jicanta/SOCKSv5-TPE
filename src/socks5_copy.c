@@ -8,6 +8,8 @@
 #include "selector.h"
 #include "socks5_internal.h"
 
+#include "metrics.h"
+
 // =============================================================================
 // COPY
 // =============================================================================
@@ -100,6 +102,11 @@ unsigned copy_read(struct selector_key* key) {
     return handle_read_eof(conn);
   } else {
     buffer_write_adv(conn->rb, bytes_read);
+    
+    struct socks5* data = ATTACHMENT(key);
+    if (key->fd == data->client_fd) {
+        metrics_add_bytes_received(bytes_read);
+    }
   }
 
   update_selector_interests(key->s, conn);
@@ -120,6 +127,11 @@ unsigned copy_write(struct selector_key* key) {
     return handle_write_error(conn);
   } else {
     buffer_read_adv(conn->wb, bytes_sent);
+  
+    struct socks5* data = ATTACHMENT(key);
+    if (key->fd == data->client_fd) {
+        metrics_add_bytes_sent(bytes_sent);
+    }
   }
 
   update_selector_interests(key->s, conn);

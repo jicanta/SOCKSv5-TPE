@@ -14,6 +14,7 @@
 #include "args.h"
 #include "selector.h"
 #include "socks5nio.h"
+#include "metrics.h"
 
 // =============================================================================
 // Global State
@@ -30,6 +31,11 @@ static void sigterm_handler(const int signal) {
   (void)signal;
   fprintf(stdout, "Received signal %d, initiating shutdown...\n", signal);
   done = true;
+}
+
+static void sigusr1_handler(const int signal) {
+  (void)signal;
+  metrics_print(stdout);
 }
 
 // =============================================================================
@@ -130,6 +136,7 @@ int main(int argc, char* argv[]) {
   close(STDIN_FILENO);
 
   parse_args(argc, argv, &socks5args);
+  metrics_init();
 
   fprintf(stdout, "==============================================\n");
   fprintf(stdout, "       SOCKSv5 Proxy Server Arrancando\n");
@@ -146,6 +153,12 @@ int main(int argc, char* argv[]) {
   if (sigaction(SIGTERM, &sa, NULL) < 0 || sigaction(SIGINT, &sa, NULL) < 0) {
     fprintf(stderr, "Failed to set signal handlers\n");
     return 1;
+  }
+
+  // Handle SIGUSR1 to print metrics
+  sa.sa_handler = sigusr1_handler;
+  if (sigaction(SIGUSR1, &sa, NULL) < 0) {
+    fprintf(stderr, "Failed to set SIGUSR1 handler\n");
   }
 
   signal(SIGPIPE, SIG_IGN);
@@ -234,6 +247,7 @@ int main(int argc, char* argv[]) {
   }
 
   fprintf(stdout, "Shutting down...\n");
+  metrics_print(stdout);
 
 cleanup:
   if (selector != NULL) {
