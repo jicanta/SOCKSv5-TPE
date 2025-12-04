@@ -1,4 +1,3 @@
-// strdup requiere _POSIX_C_SOURCE >= 200809L
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #elif _POSIX_C_SOURCE < 200809L
@@ -20,14 +19,10 @@
 
 extern struct socks5args socks5args;
 
-// =============================================================================
-// AUTH
-// =============================================================================
-
-void auth_read_init(const unsigned state, struct selector_key *key) {
+void auth_read_init(const unsigned state, struct selector_key* key) {
   (void)state;
-  struct socks5 *s = ATTACHMENT(key);
-  struct auth_st *a = &s->client.auth;
+  struct socks5* s = ATTACHMENT(key);
+  struct auth_st* a = &s->client.auth;
   a->rb = &s->read_buffer;
   a->wb = &s->write_buffer;
   a->state = AUTH_VERSION;
@@ -36,15 +31,14 @@ void auth_read_init(const unsigned state, struct selector_key *key) {
   buffer_reset(a->wb);
 }
 
-unsigned auth_read(struct selector_key *key) {
-  struct socks5 *s = ATTACHMENT(key);
-  struct auth_st *a = &s->client.auth;
+unsigned auth_read(struct selector_key* key) {
+  struct socks5* s = ATTACHMENT(key);
+  struct auth_st* a = &s->client.auth;
   size_t nbytes;
-  uint8_t *ptr = buffer_write_ptr(a->rb, &nbytes);
+  uint8_t* ptr = buffer_write_ptr(a->rb, &nbytes);
   ssize_t n = recv(key->fd, ptr, nbytes, 0);
 
-  if (n <= 0)
-    return ERROR;
+  if (n <= 0) return ERROR;
   buffer_write_adv(a->rb, n);
 
   // TODO: emprolijar
@@ -53,33 +47,33 @@ unsigned auth_read(struct selector_key *key) {
          a->state != AUTH_ERROR) {
     uint8_t byte = buffer_read(a->rb);
     switch (a->state) {
-    case AUTH_VERSION:
-      a->state = (byte == 0x01) ? AUTH_ULEN : AUTH_ERROR;
-      break;
-    case AUTH_ULEN:
-      a->ulen = byte;
-      idx = 0;
-      a->state = (byte == 0) ? AUTH_ERROR : AUTH_UNAME;
-      break;
-    case AUTH_UNAME:
-      a->username[idx++] = byte;
-      if (idx >= a->ulen) {
-        a->username[idx] = 0;
-        a->state = AUTH_PLEN;
-      }
-      break;
-    case AUTH_PLEN:
-      a->plen = byte;
-      idx = 0;
-      a->state = (byte == 0) ? AUTH_ERROR : AUTH_PASSWD;
-      break;
-    case AUTH_PASSWD:
-      a->password[idx++] = byte;
-      if (idx >= a->plen) {
-        a->password[idx] = 0;
-        a->state = AUTH_DONE;
-      }
-      break;
+      case AUTH_VERSION:
+        a->state = (byte == 0x01) ? AUTH_ULEN : AUTH_ERROR;
+        break;
+      case AUTH_ULEN:
+        a->ulen = byte;
+        idx = 0;
+        a->state = (byte == 0) ? AUTH_ERROR : AUTH_UNAME;
+        break;
+      case AUTH_UNAME:
+        a->username[idx++] = byte;
+        if (idx >= a->ulen) {
+          a->username[idx] = 0;
+          a->state = AUTH_PLEN;
+        }
+        break;
+      case AUTH_PLEN:
+        a->plen = byte;
+        idx = 0;
+        a->state = (byte == 0) ? AUTH_ERROR : AUTH_PASSWD;
+        break;
+      case AUTH_PASSWD:
+        a->password[idx++] = byte;
+        if (idx >= a->plen) {
+          a->password[idx] = 0;
+          a->state = AUTH_DONE;
+        }
+        break;
     }
   }
 
@@ -112,15 +106,14 @@ unsigned auth_read(struct selector_key *key) {
   return AUTH_READ;
 }
 
-unsigned auth_write(struct selector_key *key) {
-  struct socks5 *s = ATTACHMENT(key);
-  struct auth_st *a = &s->client.auth;
+unsigned auth_write(struct selector_key* key) {
+  struct socks5* s = ATTACHMENT(key);
+  struct auth_st* a = &s->client.auth;
   size_t nbytes;
-  uint8_t *ptr = buffer_read_ptr(a->wb, &nbytes);
+  uint8_t* ptr = buffer_read_ptr(a->wb, &nbytes);
   ssize_t n = send(key->fd, ptr, nbytes, MSG_NOSIGNAL);
 
-  if (n <= 0)
-    return ERROR;
+  if (n <= 0) return ERROR;
   buffer_read_adv(a->wb, n);
 
   if (!buffer_can_read(a->wb)) {

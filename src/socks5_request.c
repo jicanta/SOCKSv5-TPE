@@ -16,13 +16,13 @@ extern struct socks5args socks5args;
 // REQUEST
 // =============================================================================
 
-static unsigned request_start_resolve(struct selector_key *key);
-static unsigned request_start_connect(struct selector_key *key);
+static unsigned request_start_resolve(struct selector_key* key);
+static unsigned request_start_connect(struct selector_key* key);
 
-static unsigned request_marshall_reply(struct selector_key *key,
+static unsigned request_marshall_reply(struct selector_key* key,
                                        uint8_t reply_code) {
-  struct socks5 *s = ATTACHMENT(key);
-  struct request_st *r = &s->client.request;
+  struct socks5* s = ATTACHMENT(key);
+  struct request_st* r = &s->client.request;
 
   r->reply = reply_code;
   buffer_reset(r->wb);
@@ -37,10 +37,10 @@ static unsigned request_marshall_reply(struct selector_key *key,
   return REQUEST_WRITE;
 }
 
-void request_read_init(const unsigned state, struct selector_key *key) {
+void request_read_init(const unsigned state, struct selector_key* key) {
   (void)state;
-  struct socks5 *s = ATTACHMENT(key);
-  struct request_st *r = &s->client.request;
+  struct socks5* s = ATTACHMENT(key);
+  struct request_st* r = &s->client.request;
   r->rb = &s->read_buffer;
   r->wb = &s->write_buffer;
   r->state = REQUEST_VERSION;
@@ -49,11 +49,11 @@ void request_read_init(const unsigned state, struct selector_key *key) {
   buffer_reset(r->wb);
 }
 
-static void request_process_version(struct request_st *r, uint8_t byte) {
+static void request_process_version(struct request_st* r, uint8_t byte) {
   r->state = (byte == SOCKS_VERSION) ? REQUEST_CMD : REQUEST_ERROR;
 }
 
-static void request_process_cmd(struct request_st *r, uint8_t byte) {
+static void request_process_cmd(struct request_st* r, uint8_t byte) {
   r->cmd = byte;
   if (byte != SOCKS_CMD_CONNECT) {
     r->reply = SOCKS_REPLY_CMD_NOT_SUPPORTED;
@@ -63,12 +63,12 @@ static void request_process_cmd(struct request_st *r, uint8_t byte) {
   }
 }
 
-static void request_process_rsv(struct request_st *r, uint8_t byte) {
+static void request_process_rsv(struct request_st* r, uint8_t byte) {
   (void)byte;
   r->state = REQUEST_ATYP;
 }
 
-static void request_process_atyp(struct request_st *r, uint8_t byte) {
+static void request_process_atyp(struct request_st* r, uint8_t byte) {
   r->atyp = byte;
   r->addr_index = 0;
   if (byte == SOCKS_ATYP_IPV4 || byte == SOCKS_ATYP_IPV6 ||
@@ -80,9 +80,9 @@ static void request_process_atyp(struct request_st *r, uint8_t byte) {
   }
 }
 
-static void request_process_dstaddr(struct request_st *r, uint8_t byte) {
+static void request_process_dstaddr(struct request_st* r, uint8_t byte) {
   if (r->atyp == SOCKS_ATYP_IPV4) {
-    ((uint8_t *)&r->dest_addr.ipv4)[r->addr_index++] = byte;
+    ((uint8_t*)&r->dest_addr.ipv4)[r->addr_index++] = byte;
     if (r->addr_index >= SOCKS_IPV4_ADDR_SIZE) {
       r->state = REQUEST_DSTPORT;
       r->addr_index = 0;
@@ -108,7 +108,7 @@ static void request_process_dstaddr(struct request_st *r, uint8_t byte) {
   }
 }
 
-static void request_process_dstport(struct request_st *r, uint8_t byte) {
+static void request_process_dstport(struct request_st* r, uint8_t byte) {
   if (r->addr_index == 0) {
     r->dest_port = byte << 8;
     r->addr_index = 1;
@@ -125,55 +125,53 @@ static void request_process_dstport(struct request_st *r, uint8_t byte) {
 //| 1  |  1  | X'00' |  1   | Variable |    2     |
 //+----+-----+-------+------+----------+----------+
 
-unsigned request_read(struct selector_key *key) {
-  struct socks5 *s = ATTACHMENT(key);
-  struct request_st *r = &s->client.request;
+unsigned request_read(struct selector_key* key) {
+  struct socks5* s = ATTACHMENT(key);
+  struct request_st* r = &s->client.request;
   size_t nbytes;
-  uint8_t *ptr = buffer_write_ptr(r->rb, &nbytes);
+  uint8_t* ptr = buffer_write_ptr(r->rb, &nbytes);
   ssize_t n = recv(key->fd, ptr, nbytes, 0);
 
-  if (n <= 0)
-    return ERROR;
+  if (n <= 0) return ERROR;
   buffer_write_adv(r->rb, n);
 
   while (buffer_can_read(r->rb) && r->state != REQUEST_DONE &&
          r->state != REQUEST_ERROR) {
     uint8_t byte = buffer_read(r->rb);
     switch (r->state) {
-    case REQUEST_VERSION:
-      request_process_version(r, byte);
-      break;
-    case REQUEST_CMD:
-      request_process_cmd(r, byte);
-      break;
-    case REQUEST_RSV:
-      request_process_rsv(r, byte);
-      break;
-    case REQUEST_ATYP:
-      request_process_atyp(r, byte);
-      break;
-    case REQUEST_DSTADDR:
-      request_process_dstaddr(r, byte);
-      break;
-    case REQUEST_DSTPORT:
-      request_process_dstport(r, byte);
-      break;
-    default:
-      break;
+      case REQUEST_VERSION:
+        request_process_version(r, byte);
+        break;
+      case REQUEST_CMD:
+        request_process_cmd(r, byte);
+        break;
+      case REQUEST_RSV:
+        request_process_rsv(r, byte);
+        break;
+      case REQUEST_ATYP:
+        request_process_atyp(r, byte);
+        break;
+      case REQUEST_DSTADDR:
+        request_process_dstaddr(r, byte);
+        break;
+      case REQUEST_DSTPORT:
+        request_process_dstport(r, byte);
+        break;
+      default:
+        break;
     }
   }
 
-  if (r->state == REQUEST_ERROR)
-    return request_marshall_reply(key, r->reply);
+  if (r->state == REQUEST_ERROR) return request_marshall_reply(key, r->reply);
   if (r->state == REQUEST_DONE)
     return (r->atyp == SOCKS_ATYP_DOMAIN) ? request_start_resolve(key)
                                           : request_start_connect(key);
   return REQUEST_READ;
 }
 
-static unsigned request_start_resolve(struct selector_key *key) {
-  struct socks5 *s = ATTACHMENT(key);
-  struct request_st *r = &s->client.request;
+static unsigned request_start_resolve(struct selector_key* key) {
+  struct socks5* s = ATTACHMENT(key);
+  struct request_st* r = &s->client.request;
   struct addrinfo hints = {.ai_family = AF_UNSPEC,
                            .ai_socktype = SOCK_STREAM,
                            .ai_protocol = IPPROTO_TCP};
@@ -189,8 +187,8 @@ static unsigned request_start_resolve(struct selector_key *key) {
   return request_start_connect(key);
 }
 
-static int setup_address(struct socks5 *s, struct request_st *r,
-                         struct sockaddr_storage *addr, socklen_t *addr_len) {
+static int setup_address(struct socks5* s, struct request_st* r,
+                         struct sockaddr_storage* addr, socklen_t* addr_len) {
   memset(addr, 0, sizeof(*addr));
   *addr_len = 0;
 
@@ -202,13 +200,13 @@ static int setup_address(struct socks5 *s, struct request_st *r,
            s->current_origin_addr->ai_addrlen);
     *addr_len = s->current_origin_addr->ai_addrlen;
   } else if (r->atyp == SOCKS_ATYP_IPV4) {
-    struct sockaddr_in *sin = (struct sockaddr_in *)addr;
+    struct sockaddr_in* sin = (struct sockaddr_in*)addr;
     sin->sin_family = AF_INET;
     sin->sin_addr = r->dest_addr.ipv4;
     sin->sin_port = htons(r->dest_port);
     *addr_len = sizeof(*sin);
   } else if (r->atyp == SOCKS_ATYP_IPV6) {
-    struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)addr;
+    struct sockaddr_in6* sin6 = (struct sockaddr_in6*)addr;
     sin6->sin6_family = AF_INET6;
     sin6->sin6_addr = r->dest_addr.ipv6;
     sin6->sin6_port = htons(r->dest_port);
@@ -219,8 +217,7 @@ static int setup_address(struct socks5 *s, struct request_st *r,
 
 static int create_socket(int family) {
   int fd = socket(family, SOCK_STREAM, IPPROTO_TCP);
-  if (fd < 0)
-    return -1;
+  if (fd < 0) return -1;
   if (selector_fd_set_nio(fd) < 0) {
     close(fd);
     return -1;
@@ -228,9 +225,9 @@ static int create_socket(int family) {
   return fd;
 }
 
-static unsigned request_start_connect(struct selector_key *key) {
-  struct socks5 *s = ATTACHMENT(key);
-  struct request_st *r = &s->client.request;
+static unsigned request_start_connect(struct selector_key* key) {
+  struct socks5* s = ATTACHMENT(key);
+  struct request_st* r = &s->client.request;
   struct sockaddr_storage addr;
   socklen_t addr_len = 0;
 
@@ -243,7 +240,7 @@ static unsigned request_start_connect(struct selector_key *key) {
     return request_marshall_reply(key, SOCKS_REPLY_GENERAL_FAILURE);
   }
 
-  if (connect(origin_fd, (struct sockaddr *)&addr, addr_len) < 0 &&
+  if (connect(origin_fd, (struct sockaddr*)&addr, addr_len) < 0 &&
       errno != EINPROGRESS) {
     close(origin_fd);
     if (s->origin_resolution &&
@@ -265,8 +262,8 @@ static unsigned request_start_connect(struct selector_key *key) {
   return REQUEST_CONNECTING;
 }
 
-unsigned request_resolving(struct selector_key *key) {
-  struct socks5 *s = ATTACHMENT(key);
+unsigned request_resolving(struct selector_key* key) {
+  struct socks5* s = ATTACHMENT(key);
   if (s->origin_resolution) {
     s->current_origin_addr = s->origin_resolution;
     return request_start_connect(key);
@@ -274,12 +271,11 @@ unsigned request_resolving(struct selector_key *key) {
   return ERROR;
 }
 
-unsigned request_connecting(struct selector_key *key) {
-  struct socks5 *s = ATTACHMENT(key);
-  struct request_st *r = &s->client.request;
+unsigned request_connecting(struct selector_key* key) {
+  struct socks5* s = ATTACHMENT(key);
+  struct request_st* r = &s->client.request;
 
-  if (key->fd != s->origin_fd)
-    return REQUEST_CONNECTING;
+  if (key->fd != s->origin_fd) return REQUEST_CONNECTING;
 
   int error = 0;
   socklen_t len = sizeof(error);
@@ -313,15 +309,14 @@ unsigned request_connecting(struct selector_key *key) {
   return request_marshall_reply(key, SOCKS_REPLY_SUCCEEDED);
 }
 
-unsigned request_write(struct selector_key *key) {
-  struct socks5 *s = ATTACHMENT(key);
-  struct request_st *r = &s->client.request;
+unsigned request_write(struct selector_key* key) {
+  struct socks5* s = ATTACHMENT(key);
+  struct request_st* r = &s->client.request;
   size_t nbytes;
-  uint8_t *ptr = buffer_read_ptr(r->wb, &nbytes);
+  uint8_t* ptr = buffer_read_ptr(r->wb, &nbytes);
   ssize_t n = send(key->fd, ptr, nbytes, MSG_NOSIGNAL);
 
-  if (n <= 0)
-    return ERROR;
+  if (n <= 0) return ERROR;
   buffer_read_adv(r->wb, n);
 
   if (!buffer_can_read(r->wb))
