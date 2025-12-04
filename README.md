@@ -15,7 +15,7 @@
 - **Salida**: el ejecutable del servidor proxy queda en `build/bin/socks5d`.
 
 **Run Server**
-- **Ejecutar servidor (ejemplo mínimo)**: arranca el proxy con el usuario `foo:bar` (obligatorio para el test de integración).
+- **Ejecutar servidor**: arranca el proxy con el usuario `foo:bar` (obligatorio para el test de integración).
 	```bash
 	./build/bin/socks5d -u foo:bar
 	```
@@ -23,10 +23,10 @@
 	```bash
 	./build/bin/socks5d -u foo:bar > server.log 2>&1 &
 	```
-- **Opciones útiles**:
+- **Opciones**:
 	- `-l <SOCKS addr>`: dirección donde escuchará el proxy (default `0.0.0.0`).
 	- `-p <SOCKS port>`: puerto SOCKS (default `1080`).
-	- `-u <name>:<pass>`: agrega un usuario (puedes pasar varias veces hasta `MAX_USERS`).
+	- `-u <name>:<pass>`: agrega un usuario.
 	- `-L <conf addr>` / `-P <conf port>`: dirección/puerto para la interfaz de management (si está implementada).
 	- Para más opciones ver `src/shared/args.c` y el `Makefile`.
 
