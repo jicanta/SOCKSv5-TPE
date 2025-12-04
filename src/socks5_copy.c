@@ -9,16 +9,7 @@
 #include "socks5_internal.h"
 
 // =============================================================================
-// COPY STATE
-//
-// This file implements the transparent proxying phase (COPY).
-// Data is read from one socket and written to the other.
-//
-// The flow is controlled by 'struct copy_st' which manages:
-// - The file descriptor (fd)
-// - The read buffer (rb) - where we read data INTO
-// - The write buffer (wb) - where we write data FROM
-// - The other side of the connection (other)
+// COPY
 // =============================================================================
 
 /**
