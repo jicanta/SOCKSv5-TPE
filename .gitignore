@@ -1,1 +1,9 @@
 build/*
+# Benchmarks y plots locales
+buffer_benchmark.csv
+plots/*.png
+.bench_http_files/*.bin
+bench_logs/*.log
+
+# Entornos virtuales Python
+.venv/

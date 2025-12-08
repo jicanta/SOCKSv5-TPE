@@ -50,7 +50,13 @@
 - Actualmente el servidor escribe eventos a `stdout`/`stderr` (p. ej. autenticaciones y accesos). Para la entrega final implementaremos logging/métricas como lo indica la consigna.
 	- Se redirigir la salida a un fichero para conservar registros, por ejemplo `> server.log 2>&1`.
 
+**Plots de benchmarks de buffer**
+- Script: `python3 scripts/plot_buffer_benchmark.py <resultados.csv> --out plots`
+- Expectativa del CSV: columnas de tamaño de buffer (bytes), tamaño de archivo (bytes), throughput en Mbps (o duración en segundos para calcularlo) y un flag de modo/proxy opcional.
+- Salida: PNGs con throughput vs tamaño de buffer por cada tamaño de archivo y un promedio general. Opción `--linear-x` si no querés eje log2.
+- Dependencias: `pandas` y `matplotlib` (`python3 -m pip install pandas matplotlib` si no los tenés).
+- Para generar el CSV localmente: `scripts/benchmark_buffer.sh` (requiere `curl`, `python3`, `make`, `dd`). Por defecto barre buffers densos (512 B hasta 1 MiB). Podés limpiar runs previos con `rm buffer_benchmark.csv plots/*.png` antes de volver a medir/graficar.
+
 **Notas / Limitaciones**
 - El test de integración espera el usuario `foo:bar` — arrancá el servidor con `-u foo:bar` tal como está indicado.
 - Algunas funcionalidades de la consigna (exposición de métricas persistentes, gestión completa en tiempo de ejecución y logging rotativo) no se encuentran aún implementadas.
-

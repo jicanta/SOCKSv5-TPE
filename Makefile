@@ -4,6 +4,7 @@
 # Compilador y flags
 CC = gcc
 CFLAGS = -Wall -Wextra -pedantic -std=c11 -g -O2 -D_POSIX_C_SOURCE=200112L
+CFLAGS += $(CFLAGS_EXTRA)
 LDFLAGS = -lpthread
 
 # Directorios
