@@ -15,6 +15,10 @@
 // =============================================================================
 
 static void update_selector_interests(fd_selector sel, struct copy_st* conn) {
+  if (conn == NULL || conn->fd == NULL || *conn->fd < 0) {
+    return;
+  }
+
   fd_interest interest = OP_NOOP;
 
   if ((conn->duplex & OP_READ) && buffer_can_write(conn->rb)) {
@@ -131,7 +135,12 @@ unsigned copy_read(struct selector_key* key) {
   ssize_t bytes_read = recv(key->fd, write_ptr, capacity, 0);
 
   if (bytes_read <= 0) {
-    return handle_read_eof(conn, key->s);
+    const unsigned ret = handle_read_eof(conn, key->s);
+    if (ret == COPY) {
+      update_selector_interests(key->s, conn);
+      update_selector_interests(key->s, conn->other);
+    }
+    return ret;
   } else {
     buffer_write_adv(conn->rb, bytes_read);
     
@@ -170,7 +179,12 @@ unsigned copy_write(struct selector_key* key) {
   ssize_t bytes_sent = send(key->fd, read_ptr, pending_bytes, MSG_NOSIGNAL);
 
   if (bytes_sent <= 0) {
-    return handle_write_error(conn, key->s);
+    const unsigned ret = handle_write_error(conn, key->s);
+    if (ret == COPY) {
+      update_selector_interests(key->s, conn);
+      update_selector_interests(key->s, conn->other);
+    }
+    return ret;
   } else {
     buffer_read_adv(conn->wb, bytes_sent);
   
