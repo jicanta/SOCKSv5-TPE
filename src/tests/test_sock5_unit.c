@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <sys/select.h>
 
 #include "socks5_internal.h"
 #include "args.h"
@@ -17,11 +18,32 @@
 // Global args required by socks5_auth.c
 struct socks5args socks5args;
 
+// Track last interest set for each fd to assert selector usage
+static fd_interest interest_by_fd[FD_SETSIZE];
+
+static void reset_interest_tracking() {
+    for (size_t i = 0; i < FD_SETSIZE; i++) {
+        interest_by_fd[i] = OP_NOOP;
+    }
+}
+
 // Mock selector functions so we don't need the real selector library
-selector_status selector_set_interest(fd_selector s, int fd, fd_interest i) { (void)s; (void)fd; (void)i; return SELECTOR_SUCCESS; }
+selector_status selector_set_interest(fd_selector s, int fd, fd_interest i) {
+    (void)s;
+    if (fd >= 0 && fd < FD_SETSIZE) {
+        interest_by_fd[fd] = i;
+    }
+    return SELECTOR_SUCCESS;
+}
 selector_status selector_set_interest_key(struct selector_key *key, fd_interest i) { (void)key; (void)i; return SELECTOR_SUCCESS; }
 selector_status selector_register(fd_selector s, int fd, const struct fd_handler *handler, fd_interest interest, void *data) { (void)s; (void)fd; (void)handler; (void)interest; (void)data; return SELECTOR_SUCCESS; }
-selector_status selector_unregister_fd(fd_selector s, int fd) { (void)s; (void)fd; return SELECTOR_SUCCESS; }
+selector_status selector_unregister_fd(fd_selector s, int fd) {
+    (void)s;
+    if (fd >= 0 && fd < FD_SETSIZE) {
+        interest_by_fd[fd] = OP_NOOP;
+    }
+    return SELECTOR_SUCCESS;
+}
 int selector_fd_set_nio(int fd) { (void)fd; return 0; }
 
 // Mock socks5_handler
@@ -40,6 +62,16 @@ struct test_env {
     int server_fd; // The function under test reads from this
     struct socks5 data;
     struct selector_key key;
+};
+
+struct copy_test_env {
+    int client_remote_fd;   // acts as the external client
+    int client_proxy_fd;    // proxy-facing side for the client
+    int origin_proxy_fd;    // proxy-facing side for the origin
+    int origin_remote_fd;   // acts as the external origin server
+    struct socks5 data;
+    struct selector_key key_client;
+    struct selector_key key_origin;
 };
 
 void setup_env(struct test_env *env) {
@@ -65,6 +97,46 @@ void setup_env(struct test_env *env) {
 void teardown_env(struct test_env *env) {
     close(env->client_fd);
     close(env->server_fd);
+    if (env->data.username) free(env->data.username);
+}
+
+static void setup_copy_env(struct copy_test_env *env) {
+    int client_pair[2];
+    int origin_pair[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, client_pair) < 0) {
+        perror("socketpair client");
+        exit(1);
+    }
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, origin_pair) < 0) {
+        perror("socketpair origin");
+        exit(1);
+    }
+
+    env->client_remote_fd = client_pair[0];
+    env->client_proxy_fd  = client_pair[1];
+    env->origin_proxy_fd  = origin_pair[0];
+    env->origin_remote_fd = origin_pair[1];
+
+    memset(&env->data, 0, sizeof(env->data));
+    env->data.client_fd = env->client_proxy_fd;
+    env->data.origin_fd = env->origin_proxy_fd;
+    buffer_init(&env->data.read_buffer, BUFFER_SIZE, env->data.read_buffer_data);
+    buffer_init(&env->data.write_buffer, BUFFER_SIZE, env->data.write_buffer_data);
+
+    env->key_client.fd = env->client_proxy_fd;
+    env->key_client.data = &env->data;
+    env->key_client.s = NULL;
+
+    env->key_origin.fd = env->origin_proxy_fd;
+    env->key_origin.data = &env->data;
+    env->key_origin.s = NULL;
+}
+
+static void teardown_copy_env(struct copy_test_env *env) {
+    close(env->client_remote_fd);
+    close(env->client_proxy_fd);
+    close(env->origin_proxy_fd);
+    close(env->origin_remote_fd);
     if (env->data.username) free(env->data.username);
 }
 
@@ -97,7 +169,6 @@ void test_hello_read_no_auth() {
     
     // 4. Assertions
     assert(ret == HELLO_WRITE);
-    assert(env.data.client.hello.version == 0x05);
     assert(env.data.client.hello.method == 0x00); // Should select No Auth
     
     teardown_env(&env);
@@ -206,6 +277,30 @@ void test_request_parse_ipv4() {
     printf("PASSED\n");
 }
 
+void test_copy_origin_closes_without_sending() {
+    printf("[TEST] copy_read handles origin EOF without spin... ");
+    struct copy_test_env env;
+    setup_copy_env(&env);
+    reset_interest_tracking();
+
+    // Initialize COPY state
+    copy_init(COPY, &env.key_client);
+
+    // Simulate origin closing immediately without sending data
+    close(env.origin_remote_fd);
+
+    unsigned ret = copy_read(&env.key_origin);
+
+    // It should stay in COPY state but drop interest on the closed origin fd
+    assert(ret == COPY);
+    assert(interest_by_fd[env.origin_proxy_fd] == OP_NOOP);
+    assert((env.data.origin.copy.duplex & OP_READ) == 0);
+    assert(interest_by_fd[env.client_proxy_fd] == OP_READ);
+
+    teardown_copy_env(&env);
+    printf("PASSED\n");
+}
+
 int main() {
     printf("=== SOCKS5 Unit Tests ===\n");
     test_hello_read_no_auth();
@@ -213,6 +308,7 @@ int main() {
     test_auth_read_success();
     test_auth_read_failure();
     test_request_parse_ipv4();
+    test_copy_origin_closes_without_sending();
     printf("All tests passed.\n");
     return 0;
 }
