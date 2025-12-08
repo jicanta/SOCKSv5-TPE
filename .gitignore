@@ -3,7 +3,7 @@ build/*
 buffer_benchmark.csv
 plots/*.png
 .bench_http_files/*.bin
-bench_logs/*.log
+.bench_logs/*.log
 
 # Entornos virtuales Python
 .venv/
