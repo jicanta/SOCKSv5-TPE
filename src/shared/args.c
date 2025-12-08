@@ -120,6 +120,13 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
       exit(1);
     }
   }
+
+  
+  args->user_count = nusers;
+  if (nusers > 0) {
+      args->auth_required = true;
+  }
+
   if (optind < argc) {
     fprintf(stderr, "argument not accepted: ");
     while (optind < argc) {
@@ -129,3 +136,4 @@ void parse_args(const int argc, char **argv, struct socks5args *args) {
     exit(1);
   }
 }
+

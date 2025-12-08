@@ -34,6 +34,7 @@ SERVER_SOURCES = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/socks5_copy.c \
 				 $(SRC_DIR)/hello_parser.c \
                  $(SRC_DIR)/metrics.c \
+                 $(SRC_DIR)/management.c \
                  $(SERVER_DIR)/parser/parser.c \
                  $(SERVER_DIR)/parser/parser_utils.c \
                  $(SERVER_DIR)/states/stm.c \

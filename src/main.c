@@ -15,6 +15,7 @@
 #include "selector.h"
 #include "socks5nio.h"
 #include "metrics.h"
+#include "management.h"
 
 // =============================================================================
 // Global State
@@ -41,6 +42,45 @@ static void sigusr1_handler(const int signal) {
 // =============================================================================
 // Socket Setup Functions
 // =============================================================================
+
+static int create_udp_socket(const char *addr, unsigned short port) {
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock < 0) {
+        fprintf(stderr, "Failed to create management socket: %s\n", strerror(errno));
+        return -1;
+    }
+
+    int optval = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
+        fprintf(stderr, "Failed to set SO_REUSEADDR on management socket: %s\n", strerror(errno));
+    }
+
+    struct sockaddr_in sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
+    sa.sin_port = htons(port);
+    
+    if (inet_pton(AF_INET, addr, &sa.sin_addr) != 1) {
+        fprintf(stderr, "Invalid management address: %s\n", addr);
+        close(sock);
+        return -1;
+    }
+
+    if (bind(sock, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
+        fprintf(stderr, "Failed to bind management socket to %s:%hu: %s\n", 
+            addr, port, strerror(errno));
+        close(sock);
+        return -1;
+    }
+
+    if (selector_fd_set_nio(sock) < 0) {
+        fprintf(stderr, "Failed to set management socket non-blocking: %s\n", strerror(errno));
+        close(sock);
+        return -1;
+    }
+
+    return sock;
+}
 
 static int create_passive_socket(const char* addr, unsigned short port,
                                  int family, bool dual_stack) {
@@ -143,6 +183,8 @@ int main(int argc, char* argv[]) {
   fprintf(stdout, "==============================================\n");
   fprintf(stdout, "SOCKS:      %s:%hu\n", socks5args.socks_addr,
           socks5args.socks_port);
+  fprintf(stdout, "MANAGEMENT: %s:%hu\n", socks5args.mng_addr,
+          socks5args.mng_port);
   fprintf(stdout, "==============================================\n");
 
   struct sigaction sa;
@@ -186,6 +228,7 @@ int main(int argc, char* argv[]) {
 
   int socks_fd_v4 = -1;
   int socks_fd_v6 = -1;
+  int mng_fd = -1;
   int ret = 0;
 
   socks_fd_v6 =
@@ -232,6 +275,31 @@ int main(int argc, char* argv[]) {
     }
   }
 
+  // Management Interface Setup
+  mgmt_init();
+  mng_fd = create_udp_socket(socks5args.mng_addr, socks5args.mng_port);
+  if (mng_fd < 0) {
+      fprintf(stderr, "Failed to create management socket\n");
+      ret = 1;
+      goto cleanup;
+  }
+  
+  static const struct fd_handler management_handler = {
+      .handle_read = mgmt_handle_request,
+      .handle_write = NULL,
+      .handle_close = NULL,
+      .handle_block = NULL,
+  };
+
+  if (selector_register(selector, mng_fd, &management_handler,
+                        OP_READ, NULL) != SELECTOR_SUCCESS) {
+      fprintf(stderr, "Failed to register management socket\n");
+      ret = 1;
+      goto cleanup;
+  }
+  fprintf(stdout, "Management interface listening on %s:%hu\n", 
+          socks5args.mng_addr, socks5args.mng_port);
+
   fprintf(stdout, "Server ready. Waiting for connections...\n");
 
   while (!done) {
@@ -257,7 +325,9 @@ cleanup:
 
   if (socks_fd_v4 >= 0) close(socks_fd_v4);
   if (socks_fd_v6 >= 0) close(socks_fd_v6);
+  if (mng_fd >= 0) close(mng_fd);
 
+  mgmt_cleanup();
   socksv5_pool_destroy();
 
   return ret;

@@ -18,15 +18,14 @@ struct socks5args {
   unsigned short mng_port;
 
   bool disectors_enabled;
+  bool auth_required;
 
   struct users users[MAX_USERS];
+  int user_count;
 };
 
-/**
- * Interpreta la linea de comandos (argc, argv) llenando
- * args con defaults o la seleccion humana. Puede cortar
- * la ejecución.
- */
+extern struct socks5args socks5args;
+
 void parse_args(const int argc, char **argv, struct socks5args *args);
 
 #endif
