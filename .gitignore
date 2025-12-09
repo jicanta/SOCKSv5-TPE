@@ -4,6 +4,7 @@ buffer_benchmark.csv
 plots/*.png
 .bench_http_files/*.bin
 .bench_logs/*.log
+*.log
 
 # Entornos virtuales Python
 .venv/

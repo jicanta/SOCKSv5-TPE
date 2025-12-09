@@ -50,6 +50,7 @@ SERVER_OBJECTS = $(patsubst %.c,$(OBJ_DIR)/%.o,$(notdir $(SERVER_SOURCES)))
 
 # Ejecutable principal
 TARGET = $(BIN_DIR)/socks5d
+CLIENT_TARGET = $(BIN_DIR)/client
 
 # Tests
 TEST_SOURCES = $(wildcard $(TESTS_DIR)/*_test.c)
@@ -71,7 +72,7 @@ NC = \033[0m
 
 .PHONY: all clean test run help dirs
 
-all: dirs $(TARGET)
+all: dirs $(TARGET) $(CLIENT_TARGET)
 	@echo "$(GREEN)Build completado: $(TARGET)$(NC)"
 
 # Crear directorios necesarios
@@ -83,6 +84,10 @@ dirs:
 $(TARGET): $(SERVER_OBJECTS)
 	@echo "$(YELLOW)Linking $(TARGET)...$(NC)"
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
+
+$(CLIENT_TARGET): $(SRC_DIR)/client.c
+	@echo "$(YELLOW)Compiling $(CLIENT_TARGET)...$(NC)"
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(LDFLAGS)
 
 # Regla genérica para compilar archivos .c a .o
 $(OBJ_DIR)/%.o: %.c
