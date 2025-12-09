@@ -1,11 +1,17 @@
+#if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200809L
+#undef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -25,6 +31,7 @@ static void usage(const char *progname) {
             "  -h          Show this help message\n"
             "\n"
             "Commands:\n"
+            "  PING               Liveness check (returns PONG)\n"
             "  STATS              Show server statistics\n"
             "  USERS              List registered users\n"
             "  ADD <user>:<pass>  Add a new user\n"
@@ -71,6 +78,17 @@ static int setup_socket(const char *addr, unsigned short port, struct sockaddr_s
     freeaddrinfo(res);
 
     return sockfd;
+}
+
+static void normalize_command(char *cmd) {
+    char *p = cmd;
+    while (*p && isspace((unsigned char)*p)) {
+        p++;
+    }
+    while (*p && !isspace((unsigned char)*p)) {
+        *p = (char)toupper((unsigned char)*p);
+        p++;
+    }
 }
 
 static void send_command(int sockfd, struct sockaddr_storage *server_addr, const char *cmd) {
@@ -141,10 +159,14 @@ int main(int argc, char *argv[]) {
                 strncat(cmd_buf, " ", sizeof(cmd_buf) - strlen(cmd_buf) - 1);
             }
         }
+        if (strcasecmp(cmd_buf, "ping") == 0) {
+            strcpy(cmd_buf, "PING");
+        }
+        normalize_command(cmd_buf);
         send_command(sockfd, &server_addr, cmd_buf);
     } else {
         printf("Connected to %s:%d\n", mng_addr, mng_port);
-        printf("Type 'help' for commands, 'exit' or 'quit' to quit.\n\n");
+        printf("Type 'ping' for liveness, 'help' for commands, 'exit' or 'quit' to quit.\n\n");
 
         char line[BUF_SIZE];
         while (1) {
@@ -163,6 +185,11 @@ int main(int argc, char *argv[]) {
                 break;
             }
 
+            if (strcasecmp(line, "ping") == 0) {
+                strcpy(line, "PING");
+            }
+
+            normalize_command(line);
             send_command(sockfd, &server_addr, line);
         }
     }

@@ -1,4 +1,8 @@
+#if !defined(_POSIX_C_SOURCE) || _POSIX_C_SOURCE < 200809L
+#undef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
@@ -272,6 +276,8 @@ static int cmd_help(char *response, size_t resp_len) {
            "==========================================\n"
            "Available Commands:\n"
            "\n"
+           "  PING               Check management liveness (returns PONG)\n"
+           "\n"
            "  STATS              Show server statistics\n"
            "                     - Connection counts\n"
            "                     - Traffic bytes\n"
@@ -293,6 +299,16 @@ static int cmd_help(char *response, size_t resp_len) {
            "==========================================\n",
            MGMT_STATUS_OK, socks5args.mng_port, socks5args.mng_port);
 
+  return 0;
+}
+
+static int cmd_ping(char *response, size_t resp_len) {
+  time_t now = time(NULL);
+  struct tm *tm_info = localtime(&now);
+  char time_str[64];
+  strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+
+  snprintf(response, resp_len, "%s PONG %s\n", MGMT_STATUS_OK, time_str);
   return 0;
 }
 
@@ -333,7 +349,9 @@ void mgmt_handle_request(struct selector_key *key) {
 
   to_upper(cmd);
 
-  if (strcmp(cmd, MGMT_CMD_STATS) == 0) {
+  if (strcmp(cmd, MGMT_CMD_PING) == 0) {
+    cmd_ping(response, sizeof(response));
+  } else if (strcmp(cmd, MGMT_CMD_STATS) == 0) {
     cmd_stats(response, sizeof(response));
   } else if (strcmp(cmd, MGMT_CMD_USERS) == 0) {
     cmd_users(response, sizeof(response));

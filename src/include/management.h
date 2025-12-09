@@ -39,6 +39,7 @@
 #define MGMT_CMD_DEL "DEL"
 #define MGMT_CMD_HELP "HELP"
 #define MGMT_CMD_QUIT "QUIT"
+#define MGMT_CMD_PING "PING"
 
 void mgmt_handle_request(struct selector_key *key);
 
