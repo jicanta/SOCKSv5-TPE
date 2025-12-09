@@ -9,6 +9,7 @@
 #include "socks5_internal.h"
 #include "socks5nio.h"
 #include "metrics.h"
+#include "logger.h"
 
 // =============================================================================
 // Connection Pool
@@ -190,13 +191,21 @@ void socksv5_passive_accept(struct selector_key *key) {
     return;
 
   struct metrics *m = metrics_get();
-  if (m->current_connections >= 500 || selector_fd_set_nio(client_fd) < 0) {
+  if (m->current_connections >= 500) {
+    LOG_WARNING("Connection limit reached, rejecting client\n");
+    close(client_fd);
+    return;
+  }
+
+  if (selector_fd_set_nio(client_fd) < 0) {
+    LOG_ERROR("Failed to set client socket non-blocking\n");
     close(client_fd);
     return;
   }
 
   struct socks5 *s = socks5_new(client_fd);
   if (s == NULL) {
+    LOG_ERROR("Failed to allocate connection state\n");
     close(client_fd);
     return;
   }
@@ -210,10 +219,11 @@ void socksv5_passive_accept(struct selector_key *key) {
 
   if (selector_register(key->s, client_fd, &socks5_handler, OP_READ, s) !=
       SELECTOR_SUCCESS) {
+    LOG_ERROR("Failed to register client socket\n");
     socks5_destroy(s);
     close(client_fd);
     return;
   }
   metrics_new_connection();
-  fprintf(stdout, "New client connection accepted (fd=%d)\n", client_fd);
+  LOG_DEBUG("New client connection accepted (fd=%d)\n", client_fd);
 }

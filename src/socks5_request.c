@@ -9,6 +9,7 @@
 #include "args.h"
 #include "selector.h"
 #include "socks5_internal.h"
+#include "logger.h"
 
 extern struct socks5args socks5args;
 
@@ -302,8 +303,7 @@ unsigned request_connecting(struct selector_key* key) {
   else if (r->atyp == SOCKS_ATYP_IPV4)
     inet_ntop(AF_INET, &r->dest_addr.ipv4, dest_str, sizeof(dest_str));
 
-  fprintf(stdout, "Access: %s -> %s:%d\n", s->username ? s->username : "anon",
-          dest_str, r->dest_port);
+  logger_access(s->username, &s->client_addr, dest_str, r->dest_port, true);
   selector_set_interest(key->s, s->client_fd, OP_WRITE);
   selector_set_interest(key->s, s->origin_fd, OP_NOOP);
   return request_marshall_reply(key, SOCKS_REPLY_SUCCEEDED);

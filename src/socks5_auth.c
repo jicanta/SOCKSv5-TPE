@@ -19,6 +19,8 @@
 
 #include "metrics.h"
 
+#include "logger.h"
+
 extern struct socks5args socks5args;
 
 void auth_read_init(const unsigned state, struct selector_key* key) {
@@ -94,13 +96,13 @@ unsigned auth_read(struct selector_key* key) {
         a->status = 0x00;
         s->username = strdup(a->username);
         metrics_auth_success();
-        fprintf(stdout, "User '%s' authenticated\n", a->username);
+        LOG_INFO("User '%s' authenticated\n", a->username);
         break;
       }
     }
     if (a->status != 0x00) {
       metrics_auth_failure();
-      fprintf(stderr, "Auth failed for '%s'\n", a->username);
+      LOG_WARNING("Auth failed for '%s'\n", a->username);
     }
 
     buffer_write(a->wb, 0x01);

@@ -16,6 +16,7 @@
 #include "socks5nio.h"
 #include "metrics.h"
 #include "management.h"
+#include "logger.h"
 
 // =============================================================================
 // Global State
@@ -30,7 +31,7 @@ struct socks5args socks5args;
 
 static void sigterm_handler(const int signal) {
   (void)signal;
-  fprintf(stdout, "Received signal %d, initiating shutdown...\n", signal);
+  LOG_INFO("Received signal %d, initiating shutdown...\n", signal);
   done = true;
 }
 
@@ -46,13 +47,13 @@ static void sigusr1_handler(const int signal) {
 static int create_udp_socket(const char *addr, unsigned short port) {
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock < 0) {
-        fprintf(stderr, "Failed to create management socket: %s\n", strerror(errno));
+        LOG_ERROR("Failed to create management socket: %s\n", strerror(errno));
         return -1;
     }
 
     int optval = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
-        fprintf(stderr, "Failed to set SO_REUSEADDR on management socket: %s\n", strerror(errno));
+        LOG_WARNING("Failed to set SO_REUSEADDR on management socket: %s\n", strerror(errno));
     }
 
     struct sockaddr_in sa;
@@ -61,20 +62,20 @@ static int create_udp_socket(const char *addr, unsigned short port) {
     sa.sin_port = htons(port);
     
     if (inet_pton(AF_INET, addr, &sa.sin_addr) != 1) {
-        fprintf(stderr, "Invalid management address: %s\n", addr);
+        LOG_ERROR("Invalid management address: %s\n", addr);
         close(sock);
         return -1;
     }
 
     if (bind(sock, (struct sockaddr *)&sa, sizeof(sa)) < 0) {
-        fprintf(stderr, "Failed to bind management socket to %s:%hu: %s\n", 
+        LOG_ERROR("Failed to bind management socket to %s:%hu: %s\n", 
             addr, port, strerror(errno));
         close(sock);
         return -1;
     }
 
     if (selector_fd_set_nio(sock) < 0) {
-        fprintf(stderr, "Failed to set management socket non-blocking: %s\n", strerror(errno));
+        LOG_ERROR("Failed to set management socket non-blocking: %s\n", strerror(errno));
         close(sock);
         return -1;
     }
@@ -89,20 +90,20 @@ static int create_passive_socket(const char* addr, unsigned short port,
 
   sock = socket(family, SOCK_STREAM, IPPROTO_TCP);
   if (sock < 0) {
-    fprintf(stderr, "Failed to create socket: %s\n", strerror(errno));
+    LOG_ERROR("Failed to create socket: %s\n", strerror(errno));
     return -1;
   }
 
   int optval = 1;
   if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
-    fprintf(stderr, "Failed to set SO_REUSEADDR: %s\n", strerror(errno));
+    LOG_WARNING("Failed to set SO_REUSEADDR: %s\n", strerror(errno));
   }
 
   if (family == AF_INET6) {
     int v6only = dual_stack ? 0 : 1;
     if (setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only)) <
         0) {
-      fprintf(stderr, "Failed to set IPV6_V6ONLY: %s\n", strerror(errno));
+      LOG_WARNING("Failed to set IPV6_V6ONLY: %s\n", strerror(errno));
     }
   }
 
@@ -118,7 +119,7 @@ static int create_passive_socket(const char* addr, unsigned short port,
       sa4->sin_addr.s_addr = INADDR_ANY;
     } else {
       if (inet_pton(AF_INET, addr, &sa4->sin_addr) != 1) {
-        fprintf(stderr, "Invalid IPv4 address: %s\n", addr);
+        LOG_ERROR("Invalid IPv4 address: %s\n", addr);
         goto fail;
       }
     }
@@ -132,7 +133,7 @@ static int create_passive_socket(const char* addr, unsigned short port,
       sa6->sin6_addr = in6addr_any;
     } else {
       if (inet_pton(AF_INET6, addr, &sa6->sin6_addr) != 1) {
-        fprintf(stderr, "Invalid IPv6 address: %s\n", addr);
+        LOG_ERROR("Invalid IPv6 address: %s\n", addr);
         goto fail;
       }
     }
@@ -140,18 +141,18 @@ static int create_passive_socket(const char* addr, unsigned short port,
   }
 
   if (bind(sock, (struct sockaddr*)&sa, sa_len) < 0) {
-    fprintf(stderr, "Failed to bind to %s:%hu: %s\n", addr ? addr : "ANY", port,
+    LOG_ERROR("Failed to bind to %s:%hu: %s\n", addr ? addr : "ANY", port,
             strerror(errno));
     goto fail;
   }
 
   if (listen(sock, SOMAXCONN) < 0) {
-    fprintf(stderr, "Failed to listen: %s\n", strerror(errno));
+    LOG_ERROR("Failed to listen: %s\n", strerror(errno));
     goto fail;
   }
 
   if (selector_fd_set_nio(sock) < 0) {
-    fprintf(stderr, "Failed to set non-blocking mode: %s\n", strerror(errno));
+    LOG_ERROR("Failed to set non-blocking mode: %s\n", strerror(errno));
     goto fail;
   }
 
@@ -176,16 +177,18 @@ int main(int argc, char* argv[]) {
   close(STDIN_FILENO);
 
   parse_args(argc, argv, &socks5args);
+  // Initialize logging
+  logger_init(NULL, LOG_INFO);
   metrics_init();
 
-  fprintf(stdout, "==============================================\n");
-  fprintf(stdout, "       SOCKSv5 Proxy Server Arrancando\n");
-  fprintf(stdout, "==============================================\n");
-  fprintf(stdout, "SOCKS:      %s:%hu\n", socks5args.socks_addr,
+  LOG_INFO("==============================================\n");
+  LOG_INFO("       SOCKSv5 Proxy Server Arrancando\n");
+  LOG_INFO("==============================================\n");
+  LOG_INFO("SOCKS:      %s:%hu\n", socks5args.socks_addr,
           socks5args.socks_port);
-  fprintf(stdout, "MANAGEMENT: %s:%hu\n", socks5args.mng_addr,
+  LOG_INFO("MANAGEMENT: %s:%hu\n", socks5args.mng_addr,
           socks5args.mng_port);
-  fprintf(stdout, "==============================================\n");
+  LOG_INFO("==============================================\n");
 
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
@@ -193,14 +196,14 @@ int main(int argc, char* argv[]) {
   sigemptyset(&sa.sa_mask);
 
   if (sigaction(SIGTERM, &sa, NULL) < 0 || sigaction(SIGINT, &sa, NULL) < 0) {
-    fprintf(stderr, "Failed to set signal handlers\n");
+    LOG_ERROR("Failed to set signal handlers\n");
     return 1;
   }
 
   // Handle SIGUSR1 to print metrics
   sa.sa_handler = sigusr1_handler;
   if (sigaction(SIGUSR1, &sa, NULL) < 0) {
-    fprintf(stderr, "Failed to set SIGUSR1 handler\n");
+    LOG_ERROR("Failed to set SIGUSR1 handler\n");
   }
 
   signal(SIGPIPE, SIG_IGN);
@@ -215,13 +218,13 @@ int main(int argc, char* argv[]) {
   };
 
   if (selector_init(&selector_config) != SELECTOR_SUCCESS) {
-    fprintf(stderr, "Failed to initialize selector\n");
+    LOG_ERROR("Failed to initialize selector\n");
     return 1;
   }
 
   fd_selector selector = selector_new(1024);
   if (selector == NULL) {
-    fprintf(stderr, "Failed to create selector\n");
+    LOG_ERROR("Failed to create selector\n");
     selector_close();
     return 1;
   }
@@ -235,18 +238,18 @@ int main(int argc, char* argv[]) {
       create_passive_socket("::", socks5args.socks_port, AF_INET6, true);
 
   if (socks_fd_v6 >= 0) {
-    fprintf(stdout, "Listening on [::]:%-5hu (dual-stack IPv4/IPv6)\n",
+    LOG_INFO("Listening on [::]:%-5hu (dual-stack IPv4/IPv6)\n",
             socks5args.socks_port);
   } else {
-    fprintf(stdout, "Dual-stack not available, falling back to IPv4-only\n");
+    LOG_INFO("Dual-stack not available, falling back to IPv4-only\n");
     socks_fd_v4 = create_passive_socket(socks5args.socks_addr,
                                         socks5args.socks_port, AF_INET, false);
     if (socks_fd_v4 < 0) {
-      fprintf(stderr, "Failed to create SOCKS listening socket\n");
+      LOG_ERROR("Failed to create SOCKS listening socket\n");
       ret = 1;
       goto cleanup;
     }
-    fprintf(stdout, "Listening on %s:%-5hu (IPv4)\n", socks5args.socks_addr,
+    LOG_INFO("Listening on %s:%-5hu (IPv4)\n", socks5args.socks_addr,
             socks5args.socks_port);
   }
 
@@ -260,7 +263,7 @@ int main(int argc, char* argv[]) {
   if (socks_fd_v6 >= 0) {
     if (selector_register(selector, socks_fd_v6, &socks5_passive_handler,
                           OP_READ, NULL) != SELECTOR_SUCCESS) {
-      fprintf(stderr, "Failed to register IPv6 SOCKS socket\n");
+      LOG_ERROR("Failed to register IPv6 SOCKS socket\n");
       ret = 1;
       goto cleanup;
     }
@@ -269,7 +272,7 @@ int main(int argc, char* argv[]) {
   if (socks_fd_v4 >= 0) {
     if (selector_register(selector, socks_fd_v4, &socks5_passive_handler,
                           OP_READ, NULL) != SELECTOR_SUCCESS) {
-      fprintf(stderr, "Failed to register IPv4 SOCKS socket\n");
+      LOG_ERROR("Failed to register IPv4 SOCKS socket\n");
       ret = 1;
       goto cleanup;
     }
@@ -279,7 +282,7 @@ int main(int argc, char* argv[]) {
   mgmt_init();
   mng_fd = create_udp_socket(socks5args.mng_addr, socks5args.mng_port);
   if (mng_fd < 0) {
-      fprintf(stderr, "Failed to create management socket\n");
+      LOG_ERROR("Failed to create management socket\n");
       ret = 1;
       goto cleanup;
   }
@@ -293,14 +296,14 @@ int main(int argc, char* argv[]) {
 
   if (selector_register(selector, mng_fd, &management_handler,
                         OP_READ, NULL) != SELECTOR_SUCCESS) {
-      fprintf(stderr, "Failed to register management socket\n");
+      LOG_ERROR("Failed to register management socket\n");
       ret = 1;
       goto cleanup;
   }
-  fprintf(stdout, "Management interface listening on %s:%hu\n", 
+  LOG_INFO("Management interface listening on %s:%hu\n", 
           socks5args.mng_addr, socks5args.mng_port);
 
-  fprintf(stdout, "Server ready. Waiting for connections...\n");
+  LOG_INFO("Server ready. Waiting for connections...\n");
 
   while (!done) {
     selector_status ss = selector_select(selector);
@@ -308,13 +311,13 @@ int main(int argc, char* argv[]) {
       if (errno == EINTR) {
         continue;
       }
-      fprintf(stderr, "Selector error: %s\n", selector_error(ss));
+      LOG_ERROR("Selector error: %s\n", selector_error(ss));
       ret = 1;
       break;
     }
   }
 
-  fprintf(stdout, "Shutting down...\n");
+  LOG_INFO("Shutting down...\n");
   metrics_print(stdout);
 
 cleanup:
@@ -329,6 +332,7 @@ cleanup:
 
   mgmt_cleanup();
   socksv5_pool_destroy();
+  logger_close();
 
   return ret;
 }

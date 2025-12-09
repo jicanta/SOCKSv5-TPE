@@ -13,9 +13,7 @@
 #include "include/management.h"
 #include "metrics.h"
 
-#define LOG_INFO(...) fprintf(stdout, __VA_ARGS__)
-#define LOG_DEBUG(...) fprintf(stdout, __VA_ARGS__)
-#define LOG_ERROR(...) fprintf(stderr, __VA_ARGS__)
+#include "logger.h"
 
 // =============================================================================
 // Helper Functions

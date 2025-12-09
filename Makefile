@@ -33,9 +33,10 @@ SERVER_SOURCES = $(SRC_DIR)/main.c \
                  $(SRC_DIR)/socks5_auth.c \
                  $(SRC_DIR)/socks5_request.c \
                  $(SRC_DIR)/socks5_copy.c \
-				 $(SRC_DIR)/hello_parser.c \
+                 $(SRC_DIR)/hello_parser.c \
                  $(SRC_DIR)/metrics.c \
                  $(SRC_DIR)/management.c \
+                 $(SRC_DIR)/logger.c \
                  $(SERVER_DIR)/parser/parser.c \
                  $(SERVER_DIR)/parser/parser_utils.c \
                  $(SERVER_DIR)/states/stm.c \
@@ -124,8 +125,8 @@ build/obj/test_sock5_unit.o: src/tests/test_sock5_unit.c
 
 # Link and Run the Unit Tests
 test_unit: $(SERVER_OBJECTS) build/obj/test_sock5_unit.o
-	$(CC) $(CFLAGS) $(filter-out build/obj/main.o build/obj/socks5nio.o build/obj/selector.o, $(SERVER_OBJECTS)) build/obj/test_sock5_unit.o -o test_runner
-	./test_runner
+	$(CC) $(CFLAGS) $(filter-out build/obj/main.o build/obj/socks5nio.o build/obj/selector.o, $(SERVER_OBJECTS)) build/obj/test_sock5_unit.o -o build/bin/test_runner
+	./build/bin/test_runner
 
 .PHONY: test_unit unit_tests
 
