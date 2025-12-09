@@ -30,6 +30,24 @@
 	- `-L <conf addr>` / `-P <conf port>`: dirección/puerto para la interfaz de management (si está implementada).
 	- Para más opciones ver `src/shared/args.c` y el `Makefile`.
 
+**Run Management Client**
+- **Ejecutar cliente**: se conecta al servidor de management (por defecto `127.0.0.1:8080`).
+	```bash
+	./build/bin/client
+	```
+- **Modo Interactivo**: si no se pasan comandos, entra en modo shell.
+- **Comandos Directos**:
+	```bash
+	./build/bin/client STATS                # Ver estadísticas
+	./build/bin/client ADD juan:secret      # Agregar usuario
+	./build/bin/client DEL juan             # Eliminar usuario
+	./build/bin/client USERS                # Listar usuarios
+	```
+- **Opciones**:
+	- `-L <conf addr>`: dirección del servidor de gestión.
+	- `-P <conf port>`: puerto del servidor de gestión.
+	- `-h`: ayuda.
+
 **Integration Test**
 - **Ubicación**: `tests/integration_test.py`.
 - **Requisito del test**: asume que el servidor está corriendo y que existe el usuario `foo:bar`. Se debe arrancar el servidor con `-u foo:bar` antes de ejecutar el script.
@@ -54,8 +72,8 @@
 - **Salida**: genera el ejecutable temporal `test_runner` en el directorio actual y muestra cada caso con `PASSED`/`assert` en stdout/stderr.
 
 **Logs y Auditoría**
-- Actualmente el servidor escribe eventos a `stdout`/`stderr` (p. ej. autenticaciones y accesos). Para la entrega final implementaremos logging/métricas como lo indica la consigna.
-	- Se redirigir la salida a un fichero para conservar registros, por ejemplo `> server.log 2>&1`.
+- **Access Log**: El servidor escribe los accesos exitosos y fallidos en `access.log`.
+- **Server Log**: Por defecto stderr, redirigible.
 
 **Plots de benchmarks de buffer**
 - Script: `python3 scripts/plot_buffer_benchmark.py <resultados.csv> --out plots`
@@ -66,4 +84,5 @@
 
 **Notas / Limitaciones**
 - El test de integración espera el usuario `foo:bar` — arrancá el servidor con `-u foo:bar` tal como está indicado.
-- Algunas funcionalidades de la consigna (exposición de métricas persistentes, gestión completa en tiempo de ejecución y logging rotativo) no se encuentran aún implementadas.
+- El servidor soporta recolección de métricas volátiles y gestión de usuarios en tiempo de ejecución.
+
