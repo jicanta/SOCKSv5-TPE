@@ -127,7 +127,9 @@ test_unit: $(SERVER_OBJECTS) build/obj/test_sock5_unit.o
 	$(CC) $(CFLAGS) $(filter-out build/obj/main.o build/obj/socks5nio.o build/obj/selector.o, $(SERVER_OBJECTS)) build/obj/test_sock5_unit.o -o test_runner
 	./test_runner
 
-.PHONY: test_unit
+.PHONY: test_unit unit_tests
+
+unit_tests: test_unit
 
 # =====================================
 # Utilidades

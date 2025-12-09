@@ -46,6 +46,13 @@
 	pkill -f build/bin/socks5d
 	```
 
+**Unit Tests**
+- **Ejecutar**: compila y corre el runner de pruebas unitarias definido en `src/tests/test_sock5_unit.c` (valida FSM, buffers y flujos básicos sin levantar el servidor).
+	```bash
+	make unit_tests
+	```
+- **Salida**: genera el ejecutable temporal `test_runner` en el directorio actual y muestra cada caso con `PASSED`/`assert` en stdout/stderr.
+
 **Logs y Auditoría**
 - Actualmente el servidor escribe eventos a `stdout`/`stderr` (p. ej. autenticaciones y accesos). Para la entrega final implementaremos logging/métricas como lo indica la consigna.
 	- Se redirigir la salida a un fichero para conservar registros, por ejemplo `> server.log 2>&1`.
