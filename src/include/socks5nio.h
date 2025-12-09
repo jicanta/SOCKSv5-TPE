@@ -22,7 +22,7 @@
 // Buffer sizes
 // =============================================================================
 #ifndef BUFFER_SIZE
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 131072
 #endif
 
 // =============================================================================
@@ -82,8 +82,8 @@ enum socks5_state {
 
   // Request phase (RFC 1928 section 4)
   REQUEST_READ,
-  REQUEST_RESOLVING,  // DNS resolution for FQDN
-  REQUEST_CONNECTING, // Connecting to origin server
+  REQUEST_RESOLVING,   // DNS resolution for FQDN
+  REQUEST_CONNECTING,  // Connecting to origin server
   REQUEST_WRITE,
 
   // Data relay phase
@@ -108,7 +108,7 @@ enum socks5_state {
  * Passive accept handler for the master socket.
  * Called when a new client connection is ready to be accepted.
  */
-void socksv5_passive_accept(struct selector_key *key);
+void socksv5_passive_accept(struct selector_key* key);
 
 /**
  * Clean up the connection pool on server shutdown.
@@ -116,6 +116,6 @@ void socksv5_passive_accept(struct selector_key *key);
 void socksv5_pool_destroy(void);
 
 /** Get the SOCKSv5 fd_handler */
-const struct fd_handler *socks5_get_handler(void);
+const struct fd_handler* socks5_get_handler(void);
 
-#endif // SOCKS5NIO_H
+#endif  // SOCKS5NIO_H
