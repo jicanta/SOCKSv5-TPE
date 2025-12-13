@@ -196,6 +196,7 @@ static int cmd_add(const char* args, char* response, size_t resp_len) {
   int idx = socks5args.user_count;
   socks5args.users[idx].name = strndup(args, ulen);
   socks5args.users[idx].pass = strdup(password);
+  socks5args.users[idx].from_cmd = false;
 
   if (socks5args.users[idx].name == NULL ||
       socks5args.users[idx].pass == NULL) {
@@ -264,7 +265,7 @@ static int cmd_del(const char* args, char* response, size_t resp_len) {
   snprintf(response, resp_len, "%s User '%s' deleted successfully\n",
            MGMT_STATUS_OK, deleted_name);
 
-    return 0;
+  return 0;
 }
 
 static int cmd_help(char* response, size_t resp_len) {
