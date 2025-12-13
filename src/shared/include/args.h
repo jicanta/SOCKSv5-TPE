@@ -6,15 +6,16 @@
 #define MAX_USERS 10
 
 struct users {
-  char *name;
-  char *pass;
+  char* name;
+  char* pass;
+  bool from_cmd;
 };
 
 struct socks5args {
-  char *socks_addr;
+  char* socks_addr;
   unsigned short socks_port;
 
-  char *mng_addr;
+  char* mng_addr;
   unsigned short mng_port;
 
   bool disectors_enabled;
@@ -26,6 +27,6 @@ struct socks5args {
 
 extern struct socks5args socks5args;
 
-void parse_args(const int argc, char **argv, struct socks5args *args);
+void parse_args(const int argc, char** argv, struct socks5args* args);
 
 #endif

@@ -3,6 +3,8 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 
+#include "include/management.h"
+
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
@@ -14,39 +16,33 @@
 #include <unistd.h>
 
 #include "args.h"
-#include "include/management.h"
-#include "metrics.h"
-
 #include "logger.h"
+#include "metrics.h"
 
 // =============================================================================
 // Helper Functions
 // =============================================================================
 
-static char *trim(char *str) {
-  if (str == NULL)
-    return NULL;
-  while (isspace((unsigned char)*str))
-    str++;
+static char* trim(char* str) {
+  if (str == NULL) return NULL;
+  while (isspace((unsigned char)*str)) str++;
 
-  if (*str == '\0')
-    return str;
+  if (*str == '\0') return str;
 
-  char *end = str + strlen(str) - 1;
-  while (end > str && isspace((unsigned char)*end))
-    end--;
+  char* end = str + strlen(str) - 1;
+  while (end > str && isspace((unsigned char)*end)) end--;
   end[1] = '\0';
 
   return str;
 }
 
-static void to_upper(char *str) {
+static void to_upper(char* str) {
   for (; *str; str++) {
     *str = toupper((unsigned char)*str);
   }
 }
 
-static void format_number(uint64_t num, char *buf, size_t buflen) {
+static void format_number(uint64_t num, char* buf, size_t buflen) {
   if (num < 1000) {
     snprintf(buf, buflen, "%lu", (unsigned long)num);
     return;
@@ -68,8 +64,8 @@ static void format_number(uint64_t num, char *buf, size_t buflen) {
   buf[pos] = '\0';
 }
 
-static void format_bytes(uint64_t bytes, char *buf, size_t buflen) {
-  const char *units[] = {"B", "KB", "MB", "GB", "TB"};
+static void format_bytes(uint64_t bytes, char* buf, size_t buflen) {
+  const char* units[] = {"B", "KB", "MB", "GB", "TB"};
   int unit = 0;
   double size = bytes;
 
@@ -89,8 +85,8 @@ static void format_bytes(uint64_t bytes, char *buf, size_t buflen) {
 // Command Handlers
 // =============================================================================
 
-static int cmd_stats(char *response, size_t resp_len) {
-  struct metrics *m = metrics_get();
+static int cmd_stats(char* response, size_t resp_len) {
+  struct metrics* m = metrics_get();
 
   char hist_conns[32], curr_conns[32];
   char bytes_recv[32], bytes_sent[32];
@@ -104,7 +100,7 @@ static int cmd_stats(char *response, size_t resp_len) {
   format_number(m->auth_failure, auth_fail, sizeof(auth_fail));
 
   time_t now = time(NULL);
-  struct tm *tm_info = localtime(&now);
+  struct tm* tm_info = localtime(&now);
   char time_str[64];
   strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
 
@@ -128,7 +124,7 @@ static int cmd_stats(char *response, size_t resp_len) {
   return 0;
 }
 
-static int cmd_users(char *response, size_t resp_len) {
+static int cmd_users(char* response, size_t resp_len) {
   int offset = snprintf(response, resp_len,
                         "%s Registered Users (%d)\n"
                         "==============================\n",
@@ -152,14 +148,14 @@ static int cmd_users(char *response, size_t resp_len) {
   return 0;
 }
 
-static int cmd_add(const char *args, char *response, size_t resp_len) {
+static int cmd_add(const char* args, char* response, size_t resp_len) {
   if (args == NULL || *args == '\0') {
     snprintf(response, resp_len, "%s Usage: ADD <username>:<password>\n",
              MGMT_STATUS_ERROR);
     return -1;
   }
 
-  char *colon = strchr(args, ':');
+  char* colon = strchr(args, ':');
   if (colon == NULL) {
     snprintf(response, resp_len,
              "%s Invalid format. Use: ADD <username>:<password>\n",
@@ -174,7 +170,7 @@ static int cmd_add(const char *args, char *response, size_t resp_len) {
     return -1;
   }
 
-  const char *password = colon + 1;
+  const char* password = colon + 1;
   if (*password == '\0') {
     snprintf(response, resp_len, "%s Password cannot be empty\n",
              MGMT_STATUS_ERROR);
@@ -222,7 +218,7 @@ static int cmd_add(const char *args, char *response, size_t resp_len) {
   return 0;
 }
 
-static int cmd_del(const char *args, char *response, size_t resp_len) {
+static int cmd_del(const char* args, char* response, size_t resp_len) {
   if (args == NULL || *args == '\0') {
     snprintf(response, resp_len, "%s Usage: DEL <username>\n",
              MGMT_STATUS_ERROR);
@@ -244,8 +240,11 @@ static int cmd_del(const char *args, char *response, size_t resp_len) {
     return -1;
   }
 
-  char *deleted_name = socks5args.users[found].name;
-  free(socks5args.users[found].pass);
+  char* deleted_name = socks5args.users[found].name;
+  if (!socks5args.users[found].from_cmd) {
+    free(socks5args.users[found].pass);
+    free(deleted_name);
+  }
 
   for (int i = found; i < socks5args.user_count - 1; i++) {
     socks5args.users[i] = socks5args.users[i + 1];
@@ -265,12 +264,10 @@ static int cmd_del(const char *args, char *response, size_t resp_len) {
   snprintf(response, resp_len, "%s User '%s' deleted successfully\n",
            MGMT_STATUS_OK, deleted_name);
 
-  free(deleted_name);
-
-  return 0;
+    return 0;
 }
 
-static int cmd_help(char *response, size_t resp_len) {
+static int cmd_help(char* response, size_t resp_len) {
   snprintf(response, resp_len,
            "%s SOCKSv5 Proxy Management Protocol\n"
            "==========================================\n"
@@ -302,9 +299,9 @@ static int cmd_help(char *response, size_t resp_len) {
   return 0;
 }
 
-static int cmd_ping(char *response, size_t resp_len) {
+static int cmd_ping(char* response, size_t resp_len) {
   time_t now = time(NULL);
-  struct tm *tm_info = localtime(&now);
+  struct tm* tm_info = localtime(&now);
   char time_str[64];
   strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
 
@@ -316,14 +313,14 @@ static int cmd_ping(char *response, size_t resp_len) {
 // Main Request Handler
 // =============================================================================
 
-void mgmt_handle_request(struct selector_key *key) {
+void mgmt_handle_request(struct selector_key* key) {
   char buf[MGMT_MAX_CMD_LEN];
   char response[MGMT_MAX_RESP_LEN];
   struct sockaddr_storage client_addr;
   socklen_t addr_len = sizeof(client_addr);
 
   ssize_t n = recvfrom(key->fd, buf, sizeof(buf) - 1, 0,
-                       (struct sockaddr *)&client_addr, &addr_len);
+                       (struct sockaddr*)&client_addr, &addr_len);
 
   if (n <= 0) {
     return;
@@ -333,15 +330,15 @@ void mgmt_handle_request(struct selector_key *key) {
 
   char client_str[64] = "unknown";
   if (client_addr.ss_family == AF_INET) {
-    struct sockaddr_in *sin = (struct sockaddr_in *)&client_addr;
+    struct sockaddr_in* sin = (struct sockaddr_in*)&client_addr;
     inet_ntop(AF_INET, &sin->sin_addr, client_str, sizeof(client_str));
   }
   LOG_DEBUG("Management request from %s: %s\n", client_str, trim(buf));
 
-  char *cmd = trim(buf);
-  char *args = NULL;
+  char* cmd = trim(buf);
+  char* args = NULL;
 
-  char *space = strchr(cmd, ' ');
+  char* space = strchr(cmd, ' ');
   if (space != NULL) {
     *space = '\0';
     args = trim(space + 1);
@@ -372,8 +369,8 @@ void mgmt_handle_request(struct selector_key *key) {
              MGMT_STATUS_ERROR, cmd);
   }
 
-  sendto(key->fd, response, strlen(response), 0,
-         (struct sockaddr *)&client_addr, addr_len);
+  sendto(key->fd, response, strlen(response), 0, (struct sockaddr*)&client_addr,
+         addr_len);
 }
 
 void mgmt_init(void) { LOG_INFO("Management interface initialized\n"); }
